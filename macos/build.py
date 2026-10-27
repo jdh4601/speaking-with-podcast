@@ -4,7 +4,8 @@ app=pathlib.Path.home()/'Applications/English Routine.app'
 contents=app/'Contents';bin=contents/'MacOS';res=contents/'Resources'
 bin.mkdir(parents=True,exist_ok=True);res.mkdir(exist_ok=True)
 subprocess.run(['xcrun','clang','-fobjc-arc',str(root/'App.m'),'-o',str(bin/'EnglishRoutine'),'-framework','AppKit','-framework','WebKit'],check=True)
-shutil.copy2(root/'server.py',res/'server.py');shutil.copytree(root/'web',res/'web',dirs_exist_ok=True)
+for name in ['server.py','audio_clips.py','align_words.py']:shutil.copy2(root/name,res/name)
+shutil.copytree(root/'web',res/'web',dirs_exist_ok=True)
 info={'CFBundleIdentifier':'com.jayden.englishroutine','CFBundleName':'English Routine','CFBundleDisplayName':'English Routine','CFBundleExecutable':'EnglishRoutine','CFBundlePackageType':'APPL','CFBundleShortVersionString':'1.0','CFBundleVersion':'1','CFBundleIconFile':'AppIcon','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'13.0','NSPrincipalClass':'NSApplication','NSAppTransportSecurity':{'NSAllowsLocalNetworking':True,'NSAllowsArbitraryLoadsInWebContent':True}}
 (contents/'Info.plist').write_bytes(plistlib.dumps(info))
 with tempfile.TemporaryDirectory() as tmp:
