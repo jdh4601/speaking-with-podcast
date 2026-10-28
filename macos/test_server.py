@@ -257,6 +257,53 @@ class SentenceAudioTests(unittest.TestCase):
             self.assertEqual(result['kind'],'original-podcast-sentence')
             self.assertEqual(result['sentence'],'I see your point.')
             self.assertNotIn(old,result['clipUrl'])
+            self.assertEqual([word['word'] for word in result['words']], 'I see your point'.split())
+            self.assertAlmostEqual(result['words'][0]['start'], .1)
+
+    def test_relative_word_timings_are_measured_and_exclude_neighbours(self):
+        import audio_clips
+        words=[{'word':'Before','start':.1,'end':.5},
+               {'word':'neighbour','start':.8,'end':1},
+               {'word':' I','start':1,'end':1.2},
+               {'word':'see','start':1.3,'end':1.5},
+               {'word':'your','start':1.6,'end':1.8},
+               {'word':'point.','start':1.9,'end':2.1},
+               {'word':'neighbour','start':2.2,'end':2.5},
+               {'word':'After','start':2.5,'end':2.9}]
+        result=audio_clips.relative_word_timings(words,10,10.9,1.36)
+        self.assertEqual([word['word'] for word in result],['I','see','your','point.'])
+        self.assertAlmostEqual(result[0]['start'],.1)
+        self.assertAlmostEqual(result[-1]['end'],1.2)
+        partial=audio_clips.relative_word_timings(words,10,11.1,1.16)
+        self.assertNotIn('I',[word['word'] for word in partial], 'Do not label a partial word as a full word')
+
+    def test_cached_sentence_clip_gains_timings_without_running_tools(self):
+        import audio_clips,tempfile,pathlib,json,uuid,hashlib
+        from unittest.mock import Mock,patch
+        sid=str(uuid.uuid4());card={'expression':'your point','quote':'I see your point.'}
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);folder=root/'audio'/sid;folder.mkdir(parents=True)
+            session={'id':sid,'url':'https://youtu.be/abcdefghijk','transcript':'[00:00:10] I see your point.\n[00:00:14] Next sentence.','expressions':[card]}
+            (root/(sid+'.json')).write_text(json.dumps(session))
+            sentence='I see your point.'
+            digest=hashlib.sha256(('sentence-v1\n'+card['expression']+'\n'+card['quote']+'\n'+sentence).encode()).hexdigest()[:16]
+            name=f'0-{digest}';clip=folder/(name+'.mp3');clip.write_bytes(b'cached sentence')
+            metadata={'clipUrl':f'/api/audio/{sid}/{name}.mp3','start':9.9,'end':12.16,'duration':2.26,
+                      'sentence':sentence,'expression':card['expression'],'kind':'original-podcast-sentence','sourceUrl':session['url']}
+            meta=folder/(name+'.json');meta.write_text(json.dumps(metadata))
+            words=[{'word':word,'start':7+i*.5,'end':7+(i+1)*.5} for i,word in enumerate(sentence.split())]
+            (folder/'window-3-21.words.json').write_text(json.dumps({'words':words}))
+            run=Mock(side_effect=AssertionError('must not download or align cached audio'))
+            with patch.object(audio_clips,'AUDIO_PYTHON','/missing/runtime'):
+                result=audio_clips.prepare({'sessionId':sid,'index':0},root,run,'yt-dlp')
+            run.assert_not_called()
+            self.assertEqual([word['word'] for word in result['words']],sentence.split())
+            self.assertAlmostEqual(result['words'][0]['start'],.1)
+            self.assertEqual(json.loads(meta.read_text())['words'],result['words'])
+            self.assertEqual(clip.read_bytes(),b'cached sentence')
+            # A different sentence's cached timestamps must never fill the gap.
+            metadata['sentence']='I see your point about school.'
+            self.assertIsNone(audio_clips.cached_word_timings(folder,metadata))
 
 class SourceSentenceTranslationTests(unittest.TestCase):
     def test_source_sentence_is_full_original_not_practice_example(self):

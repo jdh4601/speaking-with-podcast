@@ -1,5 +1,5 @@
 """Find the original recording, align actual spoken words, and cache short MP3 clips."""
-import difflib,hashlib,html,json,pathlib,re,socket,ipaddress,urllib.request,urllib.parse,uuid
+import difflib,hashlib,html,json,math,pathlib,re,socket,ipaddress,urllib.request,urllib.parse,uuid
 from youtube_tools import command as youtube_command
 FFMPEG='/opt/homebrew/bin/ffmpeg'
 AUDIO_PYTHON=str(pathlib.Path.home()/'Library/Application Support/English Routine/audio-runtime/bin/python')
@@ -114,6 +114,65 @@ def align_sentence(words,context,expression,window_start):
     _,_,a,b=min(candidates)
     return a,b
 
+def validate_word_timings(value,duration):
+    """Validate optional clip-relative measurements; never estimate missing times."""
+    if value is None:return None
+    if not isinstance(value,list) or not 1<=len(value)<=2000:raise ValueError('단어별 음성 시간 정보가 올바르지 않습니다.')
+    result=[];previous_start=previous_end=-1
+    for item in value:
+        if not isinstance(item,dict):raise ValueError('단어별 음성 시간 정보가 올바르지 않습니다.')
+        word=item.get('word');start=item.get('start');end=item.get('end')
+        if (not isinstance(word,str) or not 1<=len(word.strip())<=200 or not tokens(word)
+            or type(start) not in (int,float) or type(end) not in (int,float)
+            or not math.isfinite(start) or not math.isfinite(end) or not 0<=start<end<=duration
+            or start<previous_start or end<previous_end):
+            raise ValueError('단어별 음성 시간 정보가 올바르지 않습니다.')
+        result.append({'word':word.strip(),'start':start,'end':end})
+        previous_start,previous_end=start,end
+    return result
+
+def relative_word_timings(words,window_start,clip_start,duration):
+    """Select measured words wholly inside this clip and convert to local time."""
+    selected=[];clip_end=clip_start+duration
+    try:
+        for item in words:
+            start=window_start+item['start'];end=window_start+item['end']
+            if not math.isfinite(start) or not math.isfinite(end):return None
+            if end<=clip_start or start>=clip_end or end<=start:continue
+            # Do not label partial neighbouring words in the clip padding as complete.
+            # The caller matches the displayed excerpt against the remaining whole words.
+            if start<clip_start-.03 or end>clip_end+.03:continue
+            if not tokens(item['word']):continue
+            selected.append({'word':item['word'].strip(),'start':round(max(0,start-clip_start),3),
+                             'end':round(min(duration,end-clip_start),3)})
+        return validate_word_timings(selected,duration)
+    except (ValueError,TypeError,KeyError,AttributeError):return None
+
+def cached_word_timings(folder,metadata):
+    """Upgrade old clip metadata from existing ASR caches, without any I/O service."""
+    try:
+        start=metadata['start'];end=metadata['end'];duration=metadata['duration']
+        sentence=metadata['sentence'];expression=metadata['expression']
+        if (type(start) not in (int,float) or type(end) not in (int,float)
+            or type(duration) not in (int,float) or not all(map(math.isfinite,(start,end,duration)))
+            or not 0<=start<end or abs(end-start-duration)>.02):return None
+        context={'tokens':tokens(sentence),'expressionStart':start}
+        if not context['tokens'] or not tokens(expression):return None
+        for path in sorted(folder.glob('window-*.words.json')):
+            match=re.fullmatch(r'window-(\d+)-(\d+)\.words\.json',path.name)
+            if not match:continue
+            window_start,window_end=map(int,match.groups())
+            if window_start>start or window_end<end:continue
+            try:
+                words=json.loads(path.read_text())['words']
+                bounds=align_sentence(words,context,expression,window_start)
+                if bounds is None or abs(max(0,bounds[0]-.10)-start)>.02 or abs(bounds[1]+.16-end)>.02:continue
+                result=relative_word_timings(words,window_start,start,duration)
+                if result:return result
+            except (ValueError,TypeError,KeyError,AttributeError,OSError):continue
+    except (ValueError,TypeError,KeyError,AttributeError):pass
+    return None
+
 def discover_audio(session,run,ytdlp):
     url=session.get('url','');host=urllib.parse.urlparse(url).hostname or ''
     if host in ('youtube.com','www.youtube.com','youtu.be','m.youtube.com'):
@@ -175,7 +234,16 @@ def prepare(data,data_dir,run,ytdlp):
     folder=data_dir/'audio'/sid;folder.mkdir(parents=True,exist_ok=True)
     digest=hashlib.sha256(('sentence-v1\n'+card['expression']+'\n'+card['quote']+'\n'+context['text']).encode()).hexdigest()[:16];name=f'{index}-{digest}'
     clip=folder/(name+'.mp3');meta=folder/(name+'.json')
-    if clip.exists() and meta.exists():return json.loads(meta.read_text())
+    if clip.exists() and meta.exists():
+        result=json.loads(meta.read_text())
+        try:measured=validate_word_timings(result.get('words'),result.get('duration',0))
+        except (ValueError,TypeError):measured=None
+        if measured is None:
+            measured=cached_word_timings(folder,result)
+            if measured:
+                result['words']=measured
+                meta.write_text(json.dumps(result,ensure_ascii=False))
+        return result
     if not pathlib.Path(AUDIO_PYTHON).exists():raise ValueError('원본 음성 구간 분석 도구가 없습니다. 앱 설치 상태를 확인하세요.')
     source,info=download_source(session,folder,run,ytdlp)
     bounds=None
@@ -191,4 +259,6 @@ def prepare(data,data_dir,run,ytdlp):
     a=max(0,bounds[0]-.10);b=bounds[1]+.16
     run([FFMPEG,'-hide_banner','-loglevel','error','-y','-ss',f'{a:.3f}','-i',str(source),'-t',f'{b-a:.3f}','-vn','-acodec','libmp3lame','-q:a','2',str(clip)],timeout=120)
     result={'clipUrl':f'/api/audio/{sid}/{name}.mp3','start':round(a,3),'end':round(b,3),'duration':round(b-a,3),'expression':card['expression'],'sentence':context['text'],'sourceUrl':info['sourceUrl'],'kind':'original-podcast-sentence'}
+    measured=relative_word_timings(words,window_start,a,result['duration'])
+    if measured:result['words']=measured
     meta.write_text(json.dumps(result,ensure_ascii=False));return result

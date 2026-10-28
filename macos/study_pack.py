@@ -6,6 +6,7 @@ import re
 import time
 import urllib.parse
 import uuid
+from audio_clips import validate_word_timings
 
 MAX_BYTES = 64 * 1024 * 1024
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
@@ -129,6 +130,9 @@ def export_pack(data, data_dir, prepare_audio, enrich, progress=lambda _: None):
                 if not 0 < size <= MAX_AUDIO_BYTES:
                     raise ValueError('음성 크기가 허용 범위를 벗어났습니다.')
                 audio = {'base64': '', 'duration': duration, 'start': start, 'kind': 'original-podcast-sentence'}
+                measured = validate_word_timings(clip.get('words'), duration)
+                if measured is not None:
+                    audio['words'] = measured
                 encoded_size = 4 * ((size + 2) // 3)
                 delta = len(_json(audio)) - len(b'null') + encoded_size
                 if byte_count + delta > MAX_BYTES:

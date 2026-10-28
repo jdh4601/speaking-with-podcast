@@ -165,6 +165,51 @@ class StudyPackTests(unittest.TestCase):
                 self.assertEqual(result['audioCount'], 0)
                 self.assertEqual(len(result['warnings']), 1)
 
+    def test_word_timing_metadata_roundtrips_and_legacy_audio_remains_supported(self):
+        original = self.audio
+        words = [{'word': 'I', 'start': .1, 'end': .3}, {'word': 'see', 'start': .3, 'end': .8},
+                 {'word': 'your', 'start': .9, 'end': 1.2}, {'word': 'point.', 'start': 1.2, 'end': 2.3}]
+        def measured(data):
+            clip = original(data)
+            clip['words'] = words
+            return clip
+        with patch.object(self, 'audio', side_effect=measured):
+            result = self.export()
+        self.assertEqual(self.read(result)['episode']['cards'][0]['audio']['words'], words)
+        self.assertNotIn('words', self.read(self.export())['episode']['cards'][0]['audio'])
+
+    def test_invalid_word_times_are_rejected_before_audio_encoding(self):
+        original = self.audio
+        cases = [[], 'not a list', [{'word': 'I', 'start': -1, 'end': .3}],
+                 [{'word': 'I', 'start': 0, 'end': 3}], [{'word': 'I', 'start': .5, 'end': .5}],
+                 [{'word': 'I', 'start': True, 'end': 1}], [{'word': 'I', 'start': 0, 'end': float('nan')}],
+                 [{'word': '', 'start': 0, 'end': .3}], [{'word': 42, 'start': 0, 'end': .3}],
+                 [{'word': 'I', 'start': 1, 'end': 1.5}, {'word': 'see', 'start': .5, 'end': 2}],
+                 [{'word': 'I', 'start': .1, 'end': 1.5}, {'word': 'see', 'start': .5, 'end': 1}]]
+        for words in cases:
+            with self.subTest(words=words):
+                def invalid(data):
+                    clip = original(data)
+                    clip['words'] = words
+                    return clip
+                with patch.object(self, 'audio', side_effect=invalid), patch('study_pack.base64.b64encode') as encode:
+                    result = self.export()
+                    encode.assert_not_called()
+                self.assertEqual(result['audioCount'], 0)
+                self.assertIn('단어별', result['warnings'][0])
+
+    def test_word_metadata_counts_toward_budget_before_encoding(self):
+        original = self.audio
+        words = [{'word': 'a' * 200, 'start': 0, 'end': 1}] * 500
+        def measured(data):
+            clip = original(data)
+            clip['words'] = words
+            return clip
+        # A generous budget for the original fixture, but too small for these timings.
+        with patch.object(self, 'audio', side_effect=measured), patch('study_pack.MAX_BYTES', 10000), patch('study_pack.base64.b64encode') as encode:
+            with self.assertRaisesRegex(ValueError, '64MB'): self.export()
+            encode.assert_not_called()
+
     def test_audio_file_symlink_is_not_embedded(self):
         original = self.audio
         secret = self.root / 'private.bin'
