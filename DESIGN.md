@@ -2,6 +2,10 @@
 
 Duolingo의 밝고 둥근 학습 경험을 벤치마킹해, 내가 듣는 팟캐스트를 매일 연습하는 개인용 앱에 적용한다. **흰 배경·선명한 초록·둥근 굵은 글자·단단한 버튼 아래쪽 면·명확한 다음 행동**을 공통 언어로 삼는다.
 
+현재 앱의 첫 화면입니다. 실제 iOS Simulator 캡처이며, 학습 기록이 없는 상태입니다.
+
+<img src="docs/design/onboarding.png" alt="밝은 초록 버튼과 헤드폰 캐릭터를 적용한 Podcast Study 첫 화면" width="300">
+
 ## 근거와 적용 범위
 
 공식 자료에서 확인한 내용과 이 프로젝트가 정한 수치를 구분한다.
@@ -104,8 +108,8 @@ Duolingo의 밝고 둥근 학습 경험을 벤치마킹해, 내가 듣는 팟캐
 
 ## 7. 적용·검수 기준
 
-공통 코드는 `ios/PodcastStudy/App/StudyDesign.swift`의 `StudyStyle`, `StudyButtonStyle`, `StudyProgressBar`, `PodcastBuddy`다. 화면에서 같은 역할에 다른 색상·모서리·글꼴을 직접 선언하지 않고 이 공통 규칙을 우선한다.
+공통 코드는 `ios/PodcastStudy/App/StudyDesign.swift`의 `StudyStyle`, `StudyButtonStyle`, `StudyProgressBar`, `PodcastBuddy`다. 일반 텍스트는 `.studyFont`로 시스템 글자 크기에 맞춰 확대하고, 별도 `@ScaledMetric`을 쓰는 표현은 중복 확대하지 않는다. 화면에서 같은 역할에 다른 색상·모서리·글꼴을 직접 선언하지 않고 이 공통 규칙을 우선한다.
 
 검수할 때는 390pt 폭, 큰 글자, 빈 상태, 원음 없는 카드, 긴 제목·문장, 답 가림/공개, 평가 전/후, 가져오기 중·실패·재시도를 함께 본다. 화면에서 한눈에 다음 행동이 보이고, 텍스트가 눌리거나 잘리지 않아야 한다.
 
-현재 환경에는 전체 Xcode/iOS SDK가 없다. Swift 문법·공유 화면의 Mac 타입 검사 및 Mac 미리보기는 가능하지만, 아이폰 스와이프·하단 탭·파일 앱·오디오 중단·VoiceOver의 실제 동작은 실기기 검증 전까지 확인하지 못한 항목으로 남긴다.
+Xcode 26.6과 iOS 26.5 Simulator에서 빌드와 화면 실행을 확인했다. 네이티브 파일 선택기로 실제 학습 꾸러미를 가져와 홈·하단 탐색·카드 화면을 점검했다. 물리적 아이폰의 스와이프 감도·오디오 중단·VoiceOver와 큰 글자 전체 조합은 추가 실기기 검수 항목이다. 실행한 검사와 범위는 [검증 기록](ios/VALIDATION.md)에 남긴다.

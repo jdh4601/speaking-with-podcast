@@ -10,7 +10,7 @@
 
 ## 시작
 
-[아이폰 앱 설치·사용·파일 형식](ios/README.md) · [Mac 앱 실행·원본 자료 처리](macos/README.md)
+[아이폰 앱 설치·사용·파일 형식](ios/README.md) · [Mac 앱 실행·원본 자료 처리](macos/README.md) · [디자인 가이드](DESIGN.md)
 
 ```sh
 # Mac 앱 빌드: ~/Applications/English Routine.app

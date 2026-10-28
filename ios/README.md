@@ -14,9 +14,9 @@ Mac에서 에피소드·표현·원문 음성을 준비하고, 아이폰에서 �
 
 ## iPhone 설치
 
-현재 개발 Mac에는 Command Line Tools만 있고 전체 Xcode/iOS SDK는 없습니다. 따라서 프로젝트와 핵심 로직은 준비했지만 **iOS 빌드·시뮬레이터·실기기 실행은 아직 검증하지 못했습니다.**
+현재 Xcode 26.6에서 iOS Simulator 빌드가 통과했고, iOS 26.5의 iPhone 17 Pro 시뮬레이터에서 파일 가져오기와 새 학습 화면을 확인했습니다. **본인 아이폰에 서명해 설치하는 단계와 물리적 실기기 동작은 아직 검증하지 않았습니다.**
 
-1. [Apple Xcode](https://developer.apple.com/xcode/resources/)에서 현재 macOS와 호환되는 Xcode를 설치하고 최초 실행 설정을 마칩니다.
+1. [Apple Xcode](https://developer.apple.com/xcode/resources/)에서 현재 macOS와 호환되는 Xcode를 설치하고 최초 실행 설정을 마칩니다. 이미 설치했다면 다음 단계로 진행합니다.
 2. `ios/PodcastStudy.xcodeproj`를 엽니다. 프로젝트 파일은 이미 포함되어 있으며 별도의 패키지 설치가 필요 없습니다.
 3. PodcastStudy 타깃 → Signing & Capabilities → 자신의 Apple 계정 Team을 선택합니다. 식별자 충돌이 있으면 Bundle Identifier를 자신의 값으로 바꿉니다.
 4. 자신의 아이폰을 연결하고 필요한 경우 기기에서 개발자 모드를 켠 후 실행 대상에 선택하고 Run을 누릅니다.
@@ -77,6 +77,8 @@ xcodebuild -project PodcastStudy.xcodeproj -scheme PodcastStudy \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
+Finder 파일 공유와 파일 앱에서 앱의 Documents 폴더에 학습 꾸러미를 넣을 수 있도록 파일 공유를 켰습니다. 복습 데이터와 원음은 Application Support에 따로 저장됩니다.
+
 Xcode 프로젝트 파일을 재생성하려면 `python3 ios/create_project.py`를 실행합니다. 개인 Team 설정은 생성 스크립트에 포함되지 않습니다.
 
 실기기 확인 순서: 음성 포함 파일 가져오기 → 비행기 모드에서 원음 재생 → 세 모드 답 공개 → 좌우 스와이프·평가 → 앱 재실행 후 북마크·일정 확인 → 같은 파일 재가져오기 → 복습 기록 백업·복원 → 잘못된 파일 가져오기. 화면 잠금·오디오 중단·작은 화면·큰 글자에서도 확인해야 합니다.
@@ -88,3 +90,5 @@ Xcode 프로젝트 파일을 재생성하려면 `python3 ios/create_project.py`�
 가져오기는 64MiB·100카드·개별 음성 8MiB 이하로 제한합니다. 버전·UUID·중복·HTTPS 원본 링크·음성 메타데이터·base64를 검사하고 새 폴더에 쓴 뒤 교체합니다. 실패한 가져오기가 기존 정상 기록을 덮어쓰지 않습니다. 가져온 음성은 별도 MP3로 풀고 manifest에서는 base64를 제거합니다.
 
 검사별 통과 범위와 실제 Mac 미리보기 확인 내용은 [검증 기록](VALIDATION.md)에 정리했습니다.
+
+화면의 색상·글자·버튼·학습 UX 규칙은 [디자인 가이드](../DESIGN.md)를 따릅니다.

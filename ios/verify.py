@@ -26,5 +26,6 @@ if probe.returncode:
         raise SystemExit(message)
     print('SKIP ' + message)
 else:
+    subprocess.run(['swift', 'test'], cwd=ROOT, check=True)
     subprocess.run(['xcodebuild', '-project', 'PodcastStudy.xcodeproj', '-scheme', 'PodcastStudy', '-sdk', 'iphonesimulator', '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath', str(ROOT / 'build/DerivedData'), 'CODE_SIGNING_ALLOWED=NO', 'build'], cwd=ROOT, check=True)
     print('PASS iOS Simulator build (runtime testing is a separate step)')
