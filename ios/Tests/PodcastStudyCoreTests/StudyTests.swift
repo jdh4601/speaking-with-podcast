@@ -233,4 +233,22 @@ final class StudyTests: XCTestCase {
         XCTAssertTrue(StudyQueue.today(episodes: [original.episode], progress: restored, now: Date(timeIntervalSince1970: 3001)).isEmpty)
     }
 
+    func testContextExcerptKeepsExpressionNearEndOfLongSource() {
+        let source = Array(repeating: "Some background before the useful sentence.", count: 12).joined(separator: " ")
+            + " And to give you guys more context, we spent six months talking through the details of the project."
+        let excerpt = ExpressionContext.excerpt(source: source, quote: "", expression: "to give you guys more context")
+        XCTAssertTrue(excerpt.contains("to give you guys more context"))
+        XCTAssertTrue(excerpt.hasPrefix("… "))
+        XCTAssertLessThanOrEqual(excerpt.count, 100)
+        XCTAssertEqual(ExpressionContext.matches(in: excerpt, expression: "to give you guys more context").count, 1)
+    }
+
+    func testContextMatchesCaseWhitespaceAndApostrophesWithoutPartialWords() {
+        XCTAssertEqual(ExpressionContext.matches(in: "WHAT IT’S LIKE to learn.", expression: "what it's like").count, 1)
+        XCTAssertEqual(ExpressionContext.matches(in: "In line with our goals.", expression: "in  line with").count, 1)
+        XCTAssertTrue(ExpressionContext.matches(in: "pipeline", expression: "line").isEmpty)
+        XCTAssertEqual(ExpressionContext.excerpt(source: "Unrelated source.", quote: "I see your point.", expression: "I see your point"), "I see your point.")
+        XCTAssertEqual(ExpressionContext.excerpt(source: "", quote: "", expression: ""), "")
+    }
+
 }

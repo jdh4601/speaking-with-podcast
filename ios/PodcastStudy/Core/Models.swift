@@ -161,3 +161,38 @@ enum ReviewSwipeAction: Equatable {
         return horizontal > 0 ? .save : .skip
     }
 }
+
+/// A short verbatim excerpt that keeps the target expression in view.
+enum ExpressionContext {
+    static func matches(in text: String, expression: String) -> [Range<String.Index>] {
+        let words = expression.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty else { return [] }
+        let pattern = words.map {
+            NSRegularExpression.escapedPattern(for: String($0).replacingOccurrences(of: "’", with: "'"))
+                .replacingOccurrences(of: "'", with: "['’]")
+        }.joined(separator: "\\s+")
+        guard let regex = try? NSRegularExpression(pattern: "(?<![\\p{L}\\p{N}])" + pattern + "(?![\\p{L}\\p{N}])", options: [.caseInsensitive]) else { return [] }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { Range($0.range, in: text) }
+    }
+
+    static func excerpt(source: String, quote: String, expression: String) -> String {
+        let source = source.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let quote = quote.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let text = !matches(in: source, expression: expression).isEmpty ? source
+            : (!matches(in: quote, expression: expression).isEmpty ? quote : (source.isEmpty ? quote : source))
+        let words = text.split(separator: " ")
+        guard !words.isEmpty else { return "" }
+        let match = matches(in: text, expression: expression).first
+        let first = match.flatMap { range in words.firstIndex { $0.endIndex > range.lowerBound } } ?? 0
+        let last = match.flatMap { range in words.lastIndex { $0.startIndex < range.upperBound } } ?? 0
+        var start = max(0, first - 3)
+        var end = min(words.count, max(last + 1, start + 15))
+        // Trim surrounding context, never the expression itself. Large text can still scroll.
+        while words[start..<end].joined(separator: " ").count > 96 {
+            if end > last + 1 && (end - last > first - start || start == first) { end -= 1 }
+            else if start < first { start += 1 }
+            else { break }
+        }
+        return (start > 0 ? "… " : "") + words[start..<end].joined(separator: " ") + (end < words.count ? "\u{00A0}…" : "")
+    }
+}

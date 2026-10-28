@@ -267,7 +267,7 @@ private struct ExpressionPage: View {
             VStack(alignment: .leading, spacing: 26) {
                 HStack(spacing: 9) {
                     Image(systemName: "headphones").foregroundStyle(StudyStyle.accent)
-                    Text(item.episode.title).foregroundStyle(StudyStyle.muted)
+                    Text(item.episode.title).foregroundStyle(StudyStyle.muted).lineLimit(1)
                 }.studyFont(13, .medium)
                 VStack(alignment: .leading, spacing: 14) {
                     Text(item.card.expression).font(StudyStyle.font(expressionSize, .heavy))
@@ -277,14 +277,6 @@ private struct ExpressionPage: View {
                 }
                 audioLine
                 sourceText
-                if !item.card.tip.isEmpty {
-                    Text(item.card.tip).studyFont(14, .medium).foregroundStyle(StudyStyle.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !item.card.example.isEmpty {
-                    Divider()
-                    readingSection("새로 만든 연습 예문", text: item.card.example, translation: item.card.exampleTranslation)
-                }
             }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
         }.scrollIndicators(.hidden)
     }
@@ -299,9 +291,7 @@ private struct ExpressionPage: View {
             } else {
                 Label("원음 없음 · 글로 복습해요", systemImage: "speaker.slash")
                     .studyFont(13, .semibold).foregroundStyle(StudyStyle.muted)
-                if let reason = item.card.audioUnavailableReason, !reason.isEmpty {
-                    Text(reason).studyFont(12, .medium).foregroundStyle(StudyStyle.muted)
-                }
+
             }
         }
     }
@@ -322,21 +312,26 @@ private struct ExpressionPage: View {
     }
 
     private var sourceText: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let excerpt = ExpressionContext.excerpt(source: item.card.sourceSentence,
+                                                quote: item.card.quote, expression: item.card.expression)
+        return VStack(alignment: .leading, spacing: 12) {
             Divider()
-            readingSection("실제 원문", text: item.card.sourceSentence.isEmpty ? item.card.quote : item.card.sourceSentence,
-                           translation: item.card.sourceSentenceTranslation)
+            Text("원문 일부").studyFont(12, .semibold).foregroundStyle(StudyStyle.muted)
+            Text(highlighted(excerpt)).studyFont(18, .medium)
+                .lineSpacing(5).fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func readingSection(_ title: String, text: String, translation: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).studyFont(12, .semibold).foregroundStyle(StudyStyle.muted)
-            Text(text).studyFont(18, .medium).fixedSize(horizontal: false, vertical: true)
-            if !translation.isEmpty {
-                Text(translation).studyFont(15, .medium).foregroundStyle(StudyStyle.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+    private func highlighted(_ text: String) -> AttributedString {
+        var result = AttributedString(text)
+        for range in ExpressionContext.matches(in: text, expression: item.card.expression) {
+            if let lower = AttributedString.Index(range.lowerBound, within: result),
+               let upper = AttributedString.Index(range.upperBound, within: result) {
+                result[lower..<upper].foregroundColor = StudyStyle.accentDeep
+                result[lower..<upper].backgroundColor = StudyStyle.accentTint
+                result[lower..<upper].inlinePresentationIntent = .stronglyEmphasized
             }
         }
+        return result
     }
 }
