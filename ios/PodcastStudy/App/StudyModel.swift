@@ -116,6 +116,17 @@ final class StudyModel: ObservableObject {
         persist(next)
     }
 
+    /// Save preference and neutral review progress commit in the same disk write.
+    @discardableResult
+    func recordSwipe(_ id: String, save: Bool) -> Bool {
+        guard !importing else { return false }
+        var next = progress
+        var record = record(id)
+        record.recordSwipe(save: save, now: Date())
+        next[id] = record
+        return persist(next)
+    }
+
     @discardableResult
     func review(_ id: String, recalled: Bool) -> Bool {
         guard !importing else { return false }
@@ -146,7 +157,19 @@ final class StudyModel: ObservableObject {
         #endif
     }
 
-    func play(_ item: StudyItem, times: Int = 1, slow: Bool = false) {
+    /// Automatic playback has inline failures so missing clips never interrupt swiping.
+    func autoplay(_ item: StudyItem) {
+        guard !importing else { return }
+        guard item.card.audio != nil else {
+            stopAudio()
+            audioCardID = item.id
+            audioStatus = "원음 없음"
+            return
+        }
+        play(item, presentErrors: false)
+    }
+
+    func play(_ item: StudyItem, times: Int = 1, slow: Bool = false, presentErrors: Bool = true) {
         guard !importing else { return }
         stopAudio()
         audioCardID = item.id
@@ -168,7 +191,7 @@ final class StudyModel: ObservableObject {
             var round = 1
             let delegate = AudioCompletionDelegate { [weak self] success in
                 guard let self, self.playbackToken == token else { return }
-                guard success else { self.playbackFailed(); return }
+                guard success else { self.playbackFailed(presentError: presentErrors); return }
                 guard round < repetitions else {
                     self.stopAudio(message: "재생 완료")
                     return
@@ -179,7 +202,7 @@ final class StudyModel: ObservableObject {
                     do { try await Task.sleep(for: .milliseconds(600)) } catch { return }
                     guard let self, !Task.isCancelled, self.playbackToken == token, let player = self.player else { return }
                     player.currentTime = 0
-                    guard player.play() else { self.playbackFailed(); return }
+                    guard player.play() else { self.playbackFailed(presentError: presentErrors); return }
                     self.audioStatus = "원음 재생 중 · \(round)/\(repetitions)회"
                 }
             }
@@ -190,14 +213,16 @@ final class StudyModel: ObservableObject {
             guard audio.play() else { throw StudyError.invalid("음성을 재생하지 못했습니다.") }
             audioActive = true
             audioStatus = "원음 재생 중 · 1/\(repetitions)회"
-        } catch { playbackFailed(error.localizedDescription) }
+        } catch { playbackFailed(error.localizedDescription, presentError: presentErrors) }
     }
 
-    private func playbackFailed(_ detail: String? = nil) {
+    private func playbackFailed(_ detail: String? = nil, presentError: Bool = true) {
         // Set active so failure also releases an audio session activated before play().
         audioActive = true
         stopAudio(message: "재생 실패")
-        error = "원문 음성을 재생하지 못했습니다." + (detail.map { " " + $0 } ?? " Mac에서 음성을 다시 준비해 가져오세요.")
+        if presentError {
+            error = "원문 음성을 재생하지 못했습니다." + (detail.map { " " + $0 } ?? " Mac에서 음성을 다시 준비해 가져오세요.")
+        }
     }
 
     private func observeAudioSession() {

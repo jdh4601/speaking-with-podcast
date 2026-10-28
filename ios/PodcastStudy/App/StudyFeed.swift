@@ -1,49 +1,71 @@
 import SwiftUI
 
-enum LearningMode: String, CaseIterable {
-    case discover = "발견", listen = "듣기", recall = "말하기"
-
-    var symbol: String {
-        switch self {
-        case .discover: return "sparkles"
-        case .listen: return "waveform"
-        case .recall: return "bubble.left.fill"
-        }
-    }
-}
-
+/// One current card, one directional decision, and no recall-grading controls.
 struct StudyFeed: View {
     @EnvironmentObject private var model: StudyModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let session: StudySession
     @State private var index = 0
-    @State private var mode: LearningMode = .discover
-    @State private var graded = Set<String>()
-    @State private var finished = false
+    @State private var reviewedCount = 0
+    @State private var savedCount = 0
+    @State private var horizontalOffset: CGFloat = 0
+    @GestureState private var dragging = false
+    @State private var dragAxis = DragAxis.undecided
+    @State private var transitioning = false
+    @State private var pendingIndex: Int?
+    @State private var transitionTask: Task<Void, Never>?
+    @State private var isVisible = false
+    @State private var autoplayedCardID: String?
 
-    private var completion: Double {
-        session.items.isEmpty ? 0 : Double(graded.count) / Double(session.items.count)
+    private enum DragAxis { case undecided, horizontal, vertical }
+    private var currentItem: StudyItem? { session.items.indices.contains(index) ? session.items[index] : nil }
+    private var complete: Bool { currentItem == nil }
+    private var playbackKey: String {
+        "\(currentItem?.id ?? "complete")-\(scenePhase == .active)-\(model.importing)-\(transitioning)-\(model.error != nil)-\(isVisible)"
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if finished || session.items.isEmpty {
+            if complete {
                 completionView
             } else {
-                lessonHeader
-                modeTabs
-                pager
-                cardNavigation
+                header
+                deck
+                swipeHint
             }
         }
         .background(StudyStyle.paper).foregroundStyle(StudyStyle.ink)
         .navigationTitle("").navigationBarTitleDisplayMode(.inline)
-        .onChange(of: index) { _, _ in model.stopAudio() }
-        .onChange(of: mode) { _, _ in model.stopAudio() }
-        .onDisappear { model.stopAudio() }
-        .onChange(of: model.libraryRevision) { _, _ in dismiss() }
         .disabled(model.importing)
+        .onAppear { isVisible = true }
+        .onDisappear {
+            isVisible = false
+            transitionTask?.cancel()
+            model.stopAudio()
+        }
+        .task(id: playbackKey) { await autoplayCurrentCard() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                model.stopAudio()
+                transitionTask?.cancel()
+                finishPendingSwipe()
+                resetDrag()
+            }
+        }
+        .onChange(of: dragging) { _, active in
+            if !active && !transitioning { resetDrag() }
+        }
+        .onChange(of: model.importing) { _, importing in
+            if importing {
+                model.stopAudio()
+                transitionTask?.cancel()
+                finishPendingSwipe()
+                resetDrag()
+            }
+        }
+        .onChange(of: model.libraryRevision) { _, _ in close() }
         .overlay {
             if model.importing {
                 ProgressView("파일 준비 중…").padding(24)
@@ -55,349 +77,266 @@ struct StudyFeed: View {
         } message: { Text(model.error ?? "") }
     }
 
-    private var lessonHeader: some View {
+    private var header: some View {
         HStack(spacing: 16) {
-            Button { dismiss() } label: {
+            Button(action: close) {
                 Image(systemName: "xmark").studyFont(20, .heavy)
                     .foregroundStyle(StudyStyle.muted).frame(width: 44, height: 44)
-            }.buttonStyle(.plain).accessibilityLabel("학습 닫기")
-            VStack(alignment: .leading, spacing: 6) {
-                StudyProgressBar(value: completion)
-                Text("복습 기록 \(graded.count) / \(session.items.count)")
-                    .studyFont(11, .bold).foregroundStyle(StudyStyle.muted)
-            }
-            Image(systemName: "headphones").studyFont(24, .heavy)
-                .foregroundStyle(StudyStyle.blue).accessibilityHidden(true)
+            }.buttonStyle(.plain).accessibilityLabel("복습 닫기")
+            StudyProgressBar(value: Double(reviewedCount) / Double(max(1, session.items.count)))
+            Text("\(index + 1) / \(session.items.count)")
+                .studyFont(13, .semibold).foregroundStyle(StudyStyle.muted).monospacedDigit()
+                .accessibilityLabel("전체 \(session.items.count)개 중 \(index + 1)번째 표현")
         }.padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
     }
 
-    private var modeTabs: some View {
-        HStack(spacing: 8) {
-            ForEach(LearningMode.allCases, id: \.self) { value in
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { mode = value }
-                } label: {
-                    Label(value.rawValue, systemImage: value.symbol)
-                        .studyFont(14, .bold).frame(maxWidth: .infinity).frame(minHeight: 44)
-                        .foregroundStyle(mode == value ? Color.white : StudyStyle.muted)
-                        .background(mode == value ? StudyStyle.accent : StudyStyle.paper, in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(mode == value ? StudyStyle.accentDeep : StudyStyle.line, lineWidth: 2))
-                }.buttonStyle(.plain)
-                    .accessibilityLabel("\(value.rawValue) 모드")
-                    .accessibilityAddTraits(mode == value ? .isSelected : [])
+    private var deck: some View {
+        GeometryReader { geometry in
+            let width = min(560, max(1, geometry.size.width))
+            ZStack {
+                RoundedRectangle(cornerRadius: 26)
+                    .fill(StudyStyle.surface).padding(.horizontal, 8).offset(y: 7)
+                if let item = currentItem {
+                    ExpressionPage(item: item, isBusy: transitioning)
+                        .id(item.id)
+                        .background(StudyStyle.paper, in: RoundedRectangle(cornerRadius: 26))
+                        .overlay { RoundedRectangle(cornerRadius: 26).stroke(StudyStyle.line, lineWidth: 2) }
+                        .overlay(alignment: horizontalOffset >= 0 ? .topLeading : .topTrailing) { intentBadge }
+                        .offset(x: horizontalOffset)
+                        .rotationEffect(.degrees(reduceMotion ? 0 : Double(horizontalOffset / width) * 7))
+                        .simultaneousGesture(swipeGesture(width: width))
+                        .accessibilityElement(children: .contain)
+                        .accessibilityHint("오른쪽으로 밀면 저장하고, 왼쪽으로 밀면 그냥 넘깁니다.")
+                        .accessibilityAction(named: Text("저장하고 다음 표현")) { submit(.save, width: width) }
+                        .accessibilityAction(named: Text("그냥 넘기고 다음 표현")) { submit(.skip, width: width) }
+                }
             }
-        }.padding(.horizontal, 24).padding(.bottom, 12)
+            .frame(width: width, height: geometry.size.height)
+            .frame(maxWidth: .infinity)
+        }
+        .coordinateSpace(name: "review-deck")
+        .padding(.horizontal, 20).padding(.bottom, 10)
+        .clipped()
     }
 
-    private var pager: some View {
-        TabView(selection: $index) {
-            ForEach(Array(session.items.enumerated()), id: \.element.id) { offset, item in
-                ExpressionPage(item: item, mode: mode, isActive: index == offset, graded: graded.contains(item.id)) { recalled in
-                    guard !graded.contains(item.id), index == offset, model.review(item.id, recalled: recalled) else { return }
-                    graded.insert(item.id)
-                    if index < session.items.count - 1 { move(1) }
-                    else { model.stopAudio(); finished = true }
-                }.tag(offset).accessibilityHidden(index != offset).allowsHitTesting(index == offset)
-            }
-        }.tabViewStyle(.page(indexDisplayMode: .never))
+    private var intentBadge: some View {
+        Text(horizontalOffset >= 0 ? "저장" : "넘기기")
+            .studyFont(24, .heavy).foregroundStyle(.white)
+            .padding(.horizontal, 20).padding(.vertical, 12)
+            .background(horizontalOffset >= 0 ? StudyStyle.accent : StudyStyle.muted, in: RoundedRectangle(cornerRadius: 14))
+            .rotationEffect(.degrees(horizontalOffset >= 0 ? -8 : 8))
+            .padding(22)
+            .opacity(min(1, max(0, Double(abs(horizontalOffset) - 20) / 65)))
+            .allowsHitTesting(false).accessibilityHidden(true)
     }
 
-    private var cardNavigation: some View {
-        HStack(spacing: 12) {
-            Button { move(-1) } label: {
-                Image(systemName: "arrow.left").studyFont(17, .heavy).frame(width: 44, height: 44)
-            }.buttonStyle(.plain).disabled(index == 0).accessibilityLabel("이전 표현")
-            Text("\(index + 1) / \(session.items.count)")
-                .studyFont(13, .bold).foregroundStyle(StudyStyle.muted).monospacedDigit()
-                .accessibilityLabel("전체 \(session.items.count)개 중 \(index + 1)번째 표현")
-            Button { move(1) } label: {
-                Image(systemName: "arrow.right").studyFont(17, .heavy).frame(width: 44, height: 44)
-            }.buttonStyle(.plain).disabled(index >= session.items.count - 1).accessibilityLabel("다음 표현")
-            Spacer(minLength: 0)
-            Button("마치기") { model.stopAudio(); finished = true }
-                .studyFont(13, .bold).foregroundStyle(StudyStyle.muted)
-                .frame(minWidth: 44, minHeight: 44).buttonStyle(.plain)
-                .accessibilityLabel("이번 학습 마치기")
-        }.padding(.horizontal, 24).padding(.vertical, 2)
-            .overlay(alignment: .top) { Rectangle().fill(StudyStyle.line).frame(height: 1) }
+    private var swipeHint: some View {
+        HStack(spacing: 20) {
+            Label("그냥 넘기기", systemImage: "arrow.left")
+                .foregroundStyle(StudyStyle.muted)
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                Text("저장")
+                Image(systemName: "arrow.right")
+            }.foregroundStyle(StudyStyle.accent)
+        }.studyFont(14, .semibold)
+            .padding(.horizontal, 30).padding(.top, 8).padding(.bottom, 20)
+            .accessibilityElement(children: .combine)
+    }
+
+    private func swipeGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 14, coordinateSpace: .named("review-deck"))
+            .updating($dragging) { _, active, _ in active = true }
+            .onChanged { value in
+                guard !transitioning, !model.importing, model.error == nil else { return }
+                if dragAxis == .undecided {
+                    let x = abs(value.translation.width), y = abs(value.translation.height)
+                    if x > y * 1.2 { dragAxis = .horizontal }
+                    else if y > x * 1.2 { dragAxis = .vertical }
+                }
+                guard dragAxis == .horizontal else { return }
+                horizontalOffset = value.translation.width
+            }
+            .onEnded { value in
+                guard !transitioning else { return }
+                let action = dragAxis == .horizontal ? ReviewSwipeAction.resolve(
+                    horizontal: Double(value.translation.width),
+                    vertical: Double(value.translation.height),
+                    projectedHorizontal: Double(value.predictedEndTranslation.width),
+                    cardWidth: Double(width)
+                ) : nil
+                dragAxis = .undecided
+                if let action { submit(action, width: width) }
+                else { resetDrag() }
+            }
+    }
+
+    private func submit(_ action: ReviewSwipeAction, width: CGFloat) {
+        guard isVisible, !transitioning, !model.importing, model.error == nil,
+              scenePhase == .active, let item = currentItem else { return }
+        let save: Bool
+        switch action { case .save: save = true; case .skip: save = false }
+        let wasSaved = model.record(item.id).saved
+        guard model.recordSwipe(item.id, save: save) else { resetDrag(); return }
+        transitioning = true
+        reviewedCount += 1
+        if save && !wasSaved { savedCount += 1 }
+        model.stopAudio()
+        pendingIndex = index + 1
+        withAnimation(reduceMotion ? nil : .easeIn(duration: 0.18)) {
+            horizontalOffset = reduceMotion ? 0 : (save ? 1 : -1) * (width + 80)
+        }
+        transitionTask?.cancel()
+        if reduceMotion { finishPendingSwipe(); return }
+        transitionTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            guard !Task.isCancelled, isVisible else { return }
+            finishPendingSwipe()
+        }
+    }
+
+    private func finishPendingSwipe() {
+        guard let next = pendingIndex else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            index = next
+            horizontalOffset = 0
+            dragAxis = .undecided
+            pendingIndex = nil
+            transitioning = false
+        }
+    }
+
+    private func resetDrag() {
+        dragAxis = .undecided
+        withAnimation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.85)) { horizontalOffset = 0 }
+    }
+
+    private func autoplayCurrentCard() async {
+        guard isVisible, scenePhase == .active, !model.importing, !transitioning,
+              model.error == nil, let item = currentItem, autoplayedCardID != item.id else { return }
+        do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+        guard !Task.isCancelled, isVisible, currentItem?.id == item.id,
+              scenePhase == .active, !model.importing, !transitioning, model.error == nil else { return }
+        autoplayedCardID = item.id
+        model.autoplay(item)
+    }
+
+    private func close() {
+        isVisible = false
+        transitionTask?.cancel()
+        model.stopAudio()
+        dismiss()
     }
 
     private var completionView: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer(minLength: 24)
-                ZStack(alignment: .topTrailing) {
-                    PodcastBuddy(size: 128)
-                    Image(systemName: "star.fill").studyFont(30, .heavy)
-                        .foregroundStyle(StudyStyle.yellow).rotationEffect(.degrees(14)).offset(x: 15, y: -10)
-                }.accessibilityHidden(true)
-                Text(graded.isEmpty ? "좋은 표현을 만났네요!" : "오늘도 한 걸음 더!")
-                    .studyFont(28, .heavy).multilineTextAlignment(.center)
-                Text("\(session.items.count)개 표현 중 \(graded.count)개 복습 기록")
-                    .studyFont(17, .bold).foregroundStyle(StudyStyle.muted)
+                PodcastBuddy(size: 120).padding(.top, 36)
+                Text("오늘의 표현을 둘러봤어요")
+                    .studyFont(27, .heavy).multilineTextAlignment(.center)
+                Text("살펴본 표현 \(reviewedCount)개 · 새로 저장 \(savedCount)개")
+                    .studyFont(17, .semibold).foregroundStyle(StudyStyle.muted)
                     .multilineTextAlignment(.center)
-                VStack(spacing: 10) {
-                    Label("직접 평가한 표현만 기록했어요", systemImage: "checkmark.circle.fill")
-                        .studyFont(15, .bold).foregroundStyle(StudyStyle.accentDeep)
-                    Text("다시 연습할 표현은 다음 복습에서 만나요.")
-                        .studyFont(14, .medium).foregroundStyle(StudyStyle.muted)
-                        .multilineTextAlignment(.center)
-                }.padding(20).frame(maxWidth: .infinity)
-                    .background(StudyStyle.accentTint, in: RoundedRectangle(cornerRadius: 20))
-                Button { dismiss() } label: {
-                    Text("학습 마치기").frame(maxWidth: .infinity)
-                }.buttonStyle(StudyButtonStyle())
-                Spacer(minLength: 24)
-            }.frame(maxWidth: 520).padding(28).frame(maxWidth: .infinity)
+                Text("오른쪽으로 고른 표현은 내 표현에 모아뒀어요.")
+                    .studyFont(15, .medium).foregroundStyle(StudyStyle.muted)
+                    .multilineTextAlignment(.center)
+                Button(action: close) { Text("닫기").frame(maxWidth: .infinity) }
+                    .buttonStyle(StudyButtonStyle())
+            }.padding(28).frame(maxWidth: 520).frame(maxWidth: .infinity)
         }
-    }
-
-    private func move(_ delta: Int) {
-        let next = max(0, min(session.items.count - 1, index + delta))
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { index = next }
     }
 }
 
-struct ExpressionPage: View {
+/// Reading is a vertical scroll. The enclosing deck only acts on horizontal intent.
+private struct ExpressionPage: View {
     @EnvironmentObject private var model: StudyModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     let item: StudyItem
-    let mode: LearningMode
-    let isActive: Bool
-    let graded: Bool
-    let onReview: (Bool) -> Void
-    @State private var revealed = false
-    @State private var showContext = false
-    @State private var slow = false
-    @ScaledMetric(relativeTo: .largeTitle) private var expressionSize = 30
-    @ScaledMetric(relativeTo: .title) private var meaningSize = 26
-    private var answerVisible: Bool { mode == .discover || revealed }
-    private var playing: Bool { model.audioActive && model.audioCardID == item.id }
+    let isBusy: Bool
+    @ScaledMetric(relativeTo: .largeTitle) private var expressionSize = 34
+
+    private var audioStatus: String {
+        guard model.audioCardID == item.id else { return "카드가 나오면 원음이 재생돼요" }
+        return model.audioActive ? "원음 재생 중" : model.audioStatus
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    sourceHeader
-                    taskHeading
-                    promptContent
-                    if mode != .recall || answerVisible { audioControls }
-                    if answerVisible { sourceDetails }
-                }.frame(maxWidth: 560, alignment: .leading).padding(.horizontal, 24).padding(.vertical, 18)
-                    .frame(maxWidth: .infinity)
-            }
-            answerFooter
-        }
-        .disabled(!isActive || model.importing)
-        .onChange(of: mode) { _, _ in revealed = false }
-        .onChange(of: isActive) { _, active in if !active { revealed = false } }
-        .sheet(isPresented: $showContext) { contextSheet }
-    }
-
-    private var sourceHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "waveform").studyFont(18, .heavy)
-                .foregroundStyle(StudyStyle.blue).frame(width: 40, height: 40)
-                .background(StudyStyle.blueTint, in: RoundedRectangle(cornerRadius: 12))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("팟캐스트 속 표현").studyFont(11, .heavy).foregroundStyle(StudyStyle.muted)
-                Text(item.episode.title).studyFont(12, .medium)
-                    .foregroundStyle(StudyStyle.muted).lineLimit(2)
-            }
-            Spacer(minLength: 0)
-            Button { model.toggleSaved(item.id) } label: {
-                Image(systemName: model.record(item.id).saved ? "bookmark.fill" : "bookmark")
-                    .studyFont(20, .bold).frame(width: 44, height: 44)
-                    .foregroundStyle(model.record(item.id).saved ? StudyStyle.orange : StudyStyle.muted)
-            }.buttonStyle(.plain).accessibilityLabel(model.record(item.id).saved ? "표현 저장 취소" : "표현 저장")
-        }
-    }
-
-    private var taskHeading: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(taskTitle).studyFont(23, .heavy).fixedSize(horizontal: false, vertical: true)
-            Text(taskSubtitle).studyFont(14, .medium).foregroundStyle(StudyStyle.muted)
-                .fixedSize(horizontal: false, vertical: true)
-        }.accessibilityElement(children: .combine)
-    }
-
-    private var taskTitle: String {
-        if answerVisible { return mode == .discover ? "오늘의 표현을 만나보세요" : "이렇게 말할 수 있어요!" }
-        if mode == .listen && item.card.audio == nil { return "이 표현은 글로 익혀봐요" }
-        return mode == .listen ? "어떤 말이 들리나요?" : "영어로 말해볼까요?"
-    }
-
-    private var taskSubtitle: String {
-        if answerVisible { return "원어민의 말투까지 함께 익혀보세요." }
-        if mode == .listen && item.card.audio == nil { return "원음이 아직 없어요. 답을 확인하고 뜻을 익혀보세요." }
-        return mode == .listen ? "자막 없이 원음을 듣고 뜻을 떠올려보세요." : "아래 뜻을 보고 소리 내어 말해보세요."
-    }
-
-    @ViewBuilder private var promptContent: some View {
-        if mode == .listen && !revealed {
-            VStack(spacing: 10) {
-                Image(systemName: "waveform").font(.system(size: 52, weight: .bold, design: .rounded))
-                    .foregroundStyle(StudyStyle.blue).padding(22)
-                    .background(StudyStyle.blueTint, in: RoundedRectangle(cornerRadius: 28))
-                Text("듣고, 떠올리고, 확인!").studyFont(15, .bold).foregroundStyle(StudyStyle.muted)
-            }.frame(maxWidth: .infinity).padding(.vertical, 8)
-        } else {
-            VStack(alignment: .leading, spacing: 14) {
-                if answerVisible {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                HStack(spacing: 9) {
+                    Image(systemName: "headphones").foregroundStyle(StudyStyle.accent)
+                    Text(item.episode.title).foregroundStyle(StudyStyle.muted)
+                }.studyFont(13, .medium)
+                VStack(alignment: .leading, spacing: 14) {
                     Text(item.card.expression).font(StudyStyle.font(expressionSize, .heavy))
-                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-                    Text(item.card.meaning).studyFont(18, .semibold).foregroundStyle(StudyStyle.muted)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text(item.card.meaning).font(StudyStyle.font(meaningSize, .bold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .studyFont(26, .bold).foregroundStyle(StudyStyle.blue)
+                    Text(item.card.meaning).studyFont(21, .semibold)
+                        .foregroundStyle(StudyStyle.muted).fixedSize(horizontal: false, vertical: true)
                 }
-            }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-                .background(answerVisible ? StudyStyle.accentTint.opacity(0.5) : StudyStyle.paper, in: RoundedRectangle(cornerRadius: 20))
-                .overlay(RoundedRectangle(cornerRadius: 20).stroke(answerVisible ? StudyStyle.accent.opacity(0.45) : StudyStyle.line, lineWidth: 2))
-        }
+                audioLine
+                sourceText
+                if !item.card.tip.isEmpty {
+                    Text(item.card.tip).studyFont(14, .medium).foregroundStyle(StudyStyle.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !item.card.example.isEmpty {
+                    Divider()
+                    readingSection("새로 만든 연습 예문", text: item.card.example, translation: item.card.exampleTranslation)
+                }
+            }.padding(26).frame(maxWidth: .infinity, alignment: .leading)
+        }.scrollIndicators(.hidden)
     }
 
-    private var audioControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var audioLine: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if item.card.audio != nil {
-                Button { model.play(item, slow: slow) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: playing ? "waveform" : "play.fill").studyFont(22, .heavy)
-                        Text(playing ? "처음부터 듣기" : "원음 듣기").studyFont(17, .heavy)
-                        Spacer()
-                        Image(systemName: "speaker.wave.2.fill").studyFont(20, .bold)
-                    }.frame(maxWidth: .infinity)
-                }.buttonStyle(StudyButtonStyle(tone: .secondary))
-                audioOptions
-                Text(model.audioCardID == item.id ? model.audioStatus : "이 에피소드의 실제 발화예요.")
-                    .studyFont(12, .medium).foregroundStyle(StudyStyle.muted)
-                    .accessibilityLabel("음성 상태: \(model.audioCardID == item.id ? model.audioStatus : "원음 준비됨")")
-            } else {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "speaker.slash.fill").foregroundStyle(StudyStyle.orange)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("이 표현은 글로 연습해요").studyFont(14, .bold)
-                        Text(item.card.audioUnavailableReason ?? "Mac에서 원음을 포함해 다시 가져올 수 있어요.")
-                            .studyFont(12, .medium).foregroundStyle(StudyStyle.muted)
-                    }
-                }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(StudyStyle.surface, in: RoundedRectangle(cornerRadius: 16))
-            }
-        }
-    }
-
-    private var audioOptions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { repeatButton; speedButton; stopButton }.fixedSize(horizontal: true, vertical: false)
-            VStack(alignment: .leading, spacing: 8) { repeatButton; HStack(spacing: 8) { speedButton; stopButton } }
-        }
-    }
-
-    private var repeatButton: some View {
-        Button("3번 반복") { model.play(item, times: 3, slow: slow) }
-            .studyFont(13, .bold).buttonStyle(StudyButtonStyle(tone: .outline))
-            .accessibilityLabel("원문 음성 3번 반복 듣기")
-    }
-
-    private var speedButton: some View {
-        Button(slow ? "0.8×" : "1×") { slow.toggle(); model.stopAudio() }
-            .studyFont(13, .bold).buttonStyle(StudyButtonStyle(tone: .outline))
-            .accessibilityLabel("재생 속도 변경").accessibilityValue(slow ? "0.8배속" : "1배속")
-    }
-
-    private var stopButton: some View {
-        Button { model.stopAudio() } label: {
-            Image(systemName: "stop.fill").studyFont(13, .bold)
-        }.buttonStyle(StudyButtonStyle(tone: .outline)).disabled(!playing)
-            .accessibilityLabel("재생 멈추기")
-    }
-
-    private var sourceDetails: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if !item.card.tip.isEmpty {
-                Label {
-                    Text(item.card.tip).studyFont(13, .medium).fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "lightbulb.fill").foregroundStyle(StudyStyle.orange)
-                }.foregroundStyle(StudyStyle.muted)
-            }
-            Button { showContext = true } label: {
-                HStack {
-                    Text("원문과 연습 예문 보기").studyFont(14, .bold)
-                    Spacer()
-                    Image(systemName: "chevron.right").studyFont(13, .bold)
-                }.frame(maxWidth: .infinity)
-            }.buttonStyle(StudyButtonStyle(tone: .outline))
-        }
-    }
-
-    private var answerFooter: some View {
-        VStack(spacing: 10) {
-            if graded {
-                Label("이번 학습에서 기록했어요", systemImage: "checkmark.circle.fill")
-                    .studyFont(14, .bold).foregroundStyle(StudyStyle.accentDeep)
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
-            } else if answerVisible {
-                Text("답을 보기 전에 떠올렸나요?").studyFont(12, .bold).foregroundStyle(StudyStyle.muted)
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) { retryButton; recalledButton }
-                    VStack(spacing: 10) { recalledButton; retryButton }
+                    HStack(spacing: 16) { audioIndicator; replay }
+                    VStack(alignment: .leading, spacing: 4) { audioIndicator; replay }
                 }
             } else {
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { revealed = true }
-                } label: {
-                    Text("답 확인").frame(maxWidth: .infinity)
-                }.buttonStyle(StudyButtonStyle())
+                Label("원음 없음 · 글로 복습해요", systemImage: "speaker.slash")
+                    .studyFont(13, .semibold).foregroundStyle(StudyStyle.muted)
+                if let reason = item.card.audioUnavailableReason, !reason.isEmpty {
+                    Text(reason).studyFont(12, .medium).foregroundStyle(StudyStyle.muted)
+                }
             }
-        }.frame(maxWidth: 560).padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 18)
-            .frame(maxWidth: .infinity).background(StudyStyle.paper)
-            .overlay(alignment: .top) { Rectangle().fill(StudyStyle.line).frame(height: 2) }
-    }
-
-    private var retryButton: some View {
-        Button { onReview(false) } label: { Text("다시 연습").frame(maxWidth: .infinity) }
-            .buttonStyle(StudyButtonStyle(tone: .outline))
-            .accessibilityHint("10분 뒤 다시 복습하도록 기록합니다.")
-    }
-
-    private var recalledButton: some View {
-        Button { onReview(true) } label: { Text("떠올렸어요").frame(maxWidth: .infinity) }
-            .buttonStyle(StudyButtonStyle())
-            .accessibilityHint("성공한 복습으로 기록하고 다음 표현으로 이동합니다.")
-    }
-
-    private var contextSheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    contextSection("실제 발화 문장", text: item.card.sourceSentence.isEmpty ? item.card.quote : item.card.sourceSentence,
-                                   translation: item.card.sourceSentenceTranslation)
-                    contextSection("원문 인용", text: item.card.quote, translation: "")
-                    if !item.card.example.isEmpty {
-                        contextSection("새로 만든 연습 예문", text: item.card.example, translation: item.card.exampleTranslation)
-                    }
-                    if let url = URL(string: item.episode.sourceURL), url.scheme == "https" {
-                        Link(destination: url) {
-                            Label("원본 에피소드 열기", systemImage: "arrow.up.right.square").frame(maxWidth: .infinity)
-                        }.buttonStyle(StudyButtonStyle(tone: .outline))
-                    }
-                }.padding(24).frame(maxWidth: 560, alignment: .leading).frame(maxWidth: .infinity)
-            }.background(StudyStyle.paper).navigationTitle("표현의 맥락")
-                .toolbar { Button("닫기") { showContext = false } }
         }
     }
 
-    private func contextSection(_ title: String, text: String, translation: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).studyFont(13, .heavy).foregroundStyle(StudyStyle.ink)
-            Text(text).studyFont(18, .semibold).textSelection(.enabled)
+    private var audioIndicator: some View {
+        Label(audioStatus, systemImage: model.audioActive && model.audioCardID == item.id ? "waveform" : "speaker.wave.2")
+            .studyFont(12, .medium).foregroundStyle(StudyStyle.muted)
+            .accessibilityLabel("음성 상태: \(audioStatus)")
+    }
+
+    private var replay: some View {
+        Button { model.play(item) } label: {
+            Label("다시 듣기", systemImage: "arrow.counterclockwise")
+                .studyFont(14, .semibold).foregroundStyle(StudyStyle.accent)
+                .frame(minHeight: 44)
+        }.buttonStyle(.plain).accessibilityLabel("원음 다시 듣기")
+            .disabled(isBusy || model.importing || scenePhase != .active)
+    }
+
+    private var sourceText: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Divider()
+            readingSection("실제 원문", text: item.card.sourceSentence.isEmpty ? item.card.quote : item.card.sourceSentence,
+                           translation: item.card.sourceSentenceTranslation)
+        }
+    }
+
+    private func readingSection(_ title: String, text: String, translation: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).studyFont(12, .semibold).foregroundStyle(StudyStyle.muted)
+            Text(text).studyFont(18, .medium).fixedSize(horizontal: false, vertical: true)
             if !translation.isEmpty {
                 Text(translation).studyFont(15, .medium).foregroundStyle(StudyStyle.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

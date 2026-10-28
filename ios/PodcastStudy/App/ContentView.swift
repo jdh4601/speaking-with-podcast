@@ -140,7 +140,6 @@ struct ContentView: View {
                     todayStats
                     todayLesson
                     dailyGoal
-                    practiceShortcuts
                 }
                 if let notice = model.notice { noticeView(notice) }
             }.frame(maxWidth: 560, alignment: .leading).padding(24)
@@ -153,7 +152,7 @@ struct ContentView: View {
             PodcastBuddy(size: 144).padding(.top, 24).accessibilityHidden(true)
             Text("좋아하는 팟캐스트가\n나만의 영어 수업으로")
                 .studyFont(29, .heavy).multilineTextAlignment(.center)
-            Text("Mac에서 고른 표현과 원음을 가져와요.\n듣고, 떠올리고, 내 말로 익혀보세요.")
+            Text("Mac에서 고른 표현과 원음을 가져와요.\n원음을 듣고, 마음에 드는 표현을 저장하세요.")
                 .studyFont(17, .medium).foregroundStyle(StudyStyle.muted)
                 .multilineTextAlignment(.center).lineSpacing(5)
             Button { showImporter = true } label: {
@@ -191,7 +190,7 @@ struct ContentView: View {
                     Text("오늘의 연습").studyFont(13, .heavy).foregroundStyle(StudyStyle.ink)
                     Text(goalMet ? "멋져요!\n목표를 달성했어요" : "오늘도\n한 문장부터!")
                         .studyFont(29, .heavy).fixedSize(horizontal: false, vertical: true)
-                    Text(queue.isEmpty ? "지금 복습할 표현을 모두 마쳤어요." : "표현 \(queue.count)개 · 듣고 말하기")
+                    Text(queue.isEmpty ? "지금 복습할 표현을 모두 마쳤어요." : "표현 \(queue.count)개 · 스와이프 복습")
                         .studyFont(15, .semibold).foregroundStyle(StudyStyle.muted)
                 }
                 Spacer(minLength: 0)
@@ -223,34 +222,9 @@ struct ContentView: View {
                     .studyFont(15).foregroundStyle(StudyStyle.ink)
             }
             StudyProgressBar(value: Double(reviewedToday) / Double(max(1, dailyTarget)))
-            Text(goalMet ? "오늘 연습한 표현을 일상에서 써보세요." : "카드를 넘기는 대신, 떠올린 표현을 기록해봐요.")
+            Text(goalMet ? "오늘 연습한 표현을 일상에서 써보세요." : "오른쪽은 저장, 왼쪽은 그냥 넘기기.")
                 .studyFont(14, .medium).foregroundStyle(StudyStyle.muted)
         }
-    }
-
-    private var practiceShortcuts: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("골라서 연습하기").studyFont(20, .heavy)
-            shortcut(title: "팟캐스트에서 발견하기", subtitle: "가져온 에피소드의 표현을 차근차근", icon: "headphones", color: StudyStyle.blue) { selectedTab = .episodes }
-            shortcut(title: "내 표현 다시 꺼내기", subtitle: "저장한 표현 \(savedItems.count)개", icon: "bookmark.fill", color: StudyStyle.orange) { selectedTab = .saved }
-        }
-    }
-
-    private func shortcut(title: String, subtitle: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon).font(.system(size: 24, weight: .bold)).foregroundStyle(color)
-                    .frame(width: 48, height: 52)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).studyFont(17)
-                    Text(subtitle).studyFont(13, .medium).foregroundStyle(StudyStyle.muted)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(StudyStyle.muted)
-            }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(StudyStyle.paper, in: RoundedRectangle(cornerRadius: 18))
-                .overlay { RoundedRectangle(cornerRadius: 18).stroke(StudyStyle.line, lineWidth: 2) }
-        }.buttonStyle(.plain)
     }
 
     private var episodes: some View {
@@ -335,6 +309,10 @@ struct ContentView: View {
                 .background(StudyStyle.paper, in: RoundedRectangle(cornerRadius: 20))
                 .overlay { RoundedRectangle(cornerRadius: 20).stroke(StudyStyle.line, lineWidth: 2) }
         }.buttonStyle(.plain).foregroundStyle(StudyStyle.ink)
+            .contextMenu {
+                Button("저장 해제", systemImage: "bookmark.slash") { model.toggleSaved(item.id) }
+            }
+            .accessibilityAction(named: "저장 해제") { model.toggleSaved(item.id) }
     }
 
     private var backupHint: some View {
