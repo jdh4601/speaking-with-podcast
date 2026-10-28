@@ -74,3 +74,11 @@ Xcode가 있는 환경에서는 `python3 ios/verify.py --require-ios`로 iOS Sim
 사용자 요청에 따라 키컬러를 `#0077B6`, 진한 아래쪽 면을 `#005A8D`, 옅은 면을 `#E4F4FC`로 통일했습니다. 기본·원음 버튼과 선택된 모드/하단 탭의 글자·아이콘은 흰색입니다. 비활성 회색 버튼과 흰색 외곽선 버튼은 별도 상태 색을 유지합니다.
 
 `python3 ios/verify.py --require-ios` 통과, iOS Simulator 빌드 성공. 실제 iPhone 17 Pro 및 iPhone 17e 시뮬레이터에서 하늘색 키컬러와 흰색 버튼 글자를 확인했고, 문서의 빈 상태 캡처도 갱신했습니다.
+
+## 2026-10-28 스와이프 복습·새 캐릭터
+
+- `PODSTUDY_FIXTURE=… python3 ios/verify.py --require-ios` 통과: Python 검사, 휴대형 CoreChecks, Swift 테스트 17개(0 실패), 공유 SwiftUI macOS 타입 검사, iOS Simulator 빌드.
+- 캐릭터 리소스 등록 후 `python3 ios/project_checks.py` 통과. PNG의 Xcode 리소스 포함·파일 헤더 확인.
+- 캐릭터 로딩 수정 후 iOS Simulator 재빌드·설치·실행 성공. iPhone 17 Pro / iOS 26.5 화면에서 새 하늘색 캐릭터 표시 확인. 초기 named-image 조회가 loose PNG를 찾지 못해 UIKit/AppKit의 번들 파일 로딩으로 수정했다.
+- 시뮬레이터에서 복습 진입, 원음 없는 카드 안내, 접근성 사용자 지정 동작 `저장하고 다음 표현` 및 `그냥 넘기고 다음 표현`으로 다음 카드 이동·진행률 변화 확인. 원음 카드 도착 시 `원음 재생 중`, 이후 `재생 완료` 상태 확인. 복습 화면에는 닫기와 작은 다시 듣기만 표시.
+- 좌표 드래그·캐릭터 터치 검수는 도구의 `noWindowsAvailable` 오류로 완료하지 못했다. 실제 손가락 스와이프 감도, 캐릭터 터치 반응, 동작 줄이기·이어폰 분리·실제 iPhone 재생은 확인하지 않았다. 방향·세로/짧은 드래그 배제·중립 기록은 자동 테스트에서 검증했다.

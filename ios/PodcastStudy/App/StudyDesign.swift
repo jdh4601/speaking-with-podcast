@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Podcast Study's bright, rounded learning system. Numeric values are documented
 /// in DESIGN.md; this is our implementation, not Duolingo's published specification.
@@ -146,74 +151,52 @@ struct StudyProgressBar: View {
     }
 }
 
-/// Original headphone companion: an audio player wearing a listening headset.
-/// Deliberately uses a rounded screen, waveform and headphones rather than an owl.
+/// Original plush companion. Motion stays local and requires no network service.
 struct PodcastBuddy: View {
-    var size: CGFloat
-
-    init(size: CGFloat = 96) { self.size = size }
+    // Loose PNG resources also work in the standalone Mac preview without an asset compiler.
+    private static let artwork: Image = {
+        let url = Bundle.main.url(forResource: "PodcastCompanion", withExtension: "png")!
+        #if canImport(UIKit)
+        return Image(uiImage: UIImage(contentsOfFile: url.path)!)
+        #else
+        return Image(nsImage: NSImage(contentsOf: url)!)
+        #endif
+    }()
+    var size: CGFloat = 96
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var greeting = false
 
     var body: some View {
-        ZStack {
-            Ellipse().fill(StudyStyle.line.opacity(0.65))
-                .frame(width: size * 0.70, height: size * 0.10).offset(y: size * 0.44)
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                .fill(StudyStyle.accentDeep)
-                .frame(width: size * 0.66, height: size * 0.67).offset(y: size * 0.07)
-            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                .fill(StudyStyle.accent)
-                .frame(width: size * 0.66, height: size * 0.67)
-            HeadphoneArch()
-                .stroke(StudyStyle.ink, style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round))
-                .frame(width: size * 0.84, height: size * 0.64).offset(y: -size * 0.075)
-            HStack(spacing: size * 0.63) {
-                RoundedRectangle(cornerRadius: size * 0.07).fill(StudyStyle.ink)
-                RoundedRectangle(cornerRadius: size * 0.07).fill(StudyStyle.ink)
-            }.frame(width: size * 0.87, height: size * 0.28).offset(y: size * 0.02)
-            RoundedRectangle(cornerRadius: size * 0.12, style: .continuous)
-                .fill(StudyStyle.paper)
-                .frame(width: size * 0.44, height: size * 0.37).offset(y: -size * 0.035)
-            HStack(spacing: size * 0.12) {
-                Capsule().fill(StudyStyle.ink).frame(width: size * 0.045, height: size * 0.08)
-                Capsule().fill(StudyStyle.ink).frame(width: size * 0.045, height: size * 0.08)
-            }.offset(y: -size * 0.09)
-            Smile()
-                .stroke(StudyStyle.ink, style: StrokeStyle(lineWidth: size * 0.035, lineCap: .round))
-                .frame(width: size * 0.13, height: size * 0.055).offset(y: size * 0.015)
-            HStack(alignment: .center, spacing: size * 0.025) {
-                ForEach(Array([0.06, 0.11, 0.075, 0.14, 0.06].enumerated()), id: \.offset) { _, height in
-                    Capsule().fill(StudyStyle.ink.opacity(0.65))
-                        .frame(width: size * 0.025, height: size * height)
-                }
-            }.offset(y: size * 0.255)
-            Circle().fill(StudyStyle.yellow).frame(width: size * 0.11, height: size * 0.11)
-                .overlay(Circle().strokeBorder(StudyStyle.paper, lineWidth: size * 0.025))
-                .offset(x: size * 0.34, y: -size * 0.29)
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || scenePhase != .active)) { context in
+            let time = reduceMotion || scenePhase != .active ? 0 : context.date.timeIntervalSinceReferenceDate
+            let breath = sin(time * 1.8)
+            let sway = sin(time * 0.9)
+            ZStack {
+                Ellipse().fill(StudyStyle.accentDeep.opacity(0.10))
+                    .frame(width: size * 0.51, height: size * 0.065)
+                    .scaleEffect(x: 1 - breath * 0.04, y: 1)
+                    .offset(y: size * 0.43)
+                Self.artwork
+                    .resizable().scaledToFit().frame(width: size, height: size)
+                    .scaleEffect(x: 1 - breath * 0.012, y: 1 + breath * 0.018, anchor: .bottom)
+                    .rotationEffect(.degrees(greeting ? -9 : sway * 2.5), anchor: .bottom)
+                    .offset(y: greeting ? -size * 0.07 : -size * (0.012 + breath * 0.012))
+            }
         }
         .frame(width: size, height: size)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !reduceMotion, scenePhase == .active else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.45)) { greeting = true }
+        }
+        .task(id: greeting) {
+            guard greeting else { return }
+            do { try await Task.sleep(for: .milliseconds(550)) } catch { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) { greeting = false }
+        }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { greeting = false } }
+        .onChange(of: reduceMotion) { _, reduced in if reduced { greeting = false } }
         .accessibilityHidden(true)
-    }
-}
-
-private struct HeadphoneArch: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.midY))
-        path.addCurve(to: CGPoint(x: rect.maxX, y: rect.midY),
-                      control1: CGPoint(x: rect.minX, y: rect.minY - rect.height * 0.2),
-                      control2: CGPoint(x: rect.maxX, y: rect.minY - rect.height * 0.2))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        return path
-    }
-}
-
-private struct Smile: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY),
-                         control: CGPoint(x: rect.midX, y: rect.maxY * 1.7))
-        return path
     }
 }

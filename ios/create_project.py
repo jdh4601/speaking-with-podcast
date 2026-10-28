@@ -12,6 +12,7 @@ def quoted(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
 
 files = sorted((ROOT / 'PodcastStudy').rglob('*.swift'))
+resources = sorted((ROOT / 'PodcastStudy/Resources').glob('*.png'))
 objects = []
 def add(name, body):
     objects.append(f'{ident(name)} = {{ {body} }};')
@@ -20,12 +21,16 @@ for file in files:
     path = str(file.relative_to(ROOT))
     add(path, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quoted(path)}; sourceTree = "<group>";')
     add('build:' + path, f'isa = PBXBuildFile; fileRef = {ident(path)};')
+for file in resources:
+    path = str(file.relative_to(ROOT))
+    add(path, f'isa = PBXFileReference; lastKnownFileType = image.png; path = {quoted(path)}; sourceTree = "<group>";')
+    add('build:' + path, f'isa = PBXBuildFile; fileRef = {ident(path)};')
 add('product', 'isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PodcastStudy.app; sourceTree = BUILT_PRODUCTS_DIR;')
 add('sources', 'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (' + ','.join(ident('build:' + str(f.relative_to(ROOT))) for f in files) + '); runOnlyForDeploymentPostprocessing = 0;')
 add('frameworks', 'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
-add('resources', 'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+add('resources', 'isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (' + ','.join(ident('build:' + str(f.relative_to(ROOT))) for f in resources) + '); runOnlyForDeploymentPostprocessing = 0;')
 add('products', f'isa = PBXGroup; children = ({ident("product")}); name = Products; sourceTree = "<group>";')
-add('main', 'isa = PBXGroup; children = (' + ','.join([*(ident(str(f.relative_to(ROOT))) for f in files), ident('products')]) + '); sourceTree = "<group>";')
+add('main', 'isa = PBXGroup; children = (' + ','.join([*(ident(str(f.relative_to(ROOT))) for f in [*files, *resources]), ident('products')]) + '); sourceTree = "<group>";')
 for mode in ['Debug', 'Release']:
     common = 'CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0;'
     add('project:' + mode, f'isa = XCBuildConfiguration; name = {mode}; buildSettings = {{ {common} }};')

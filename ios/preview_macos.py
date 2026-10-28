@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Build a macOS preview of shared SwiftUI views without requiring an iOS SDK.
 
-This does NOT compile or emulate iOS. Horizontal page-style TabView is replaced
-with the Mac's automatic tabs. App data lives in a separate preview directory.
+This does NOT compile or emulate iOS. Shared views use the same swipe deck;
+app data lives in a separate preview directory.
 """
 import argparse
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import tempfile
 
@@ -30,7 +31,6 @@ with tempfile.TemporaryDirectory(prefix='podcast-ui-preview-') as temp:
     for path in sorted((ROOT / 'PodcastStudy/App').glob('*.swift')):
         source = path.read_text()
         source = source.replace('.navigationBarTitleDisplayMode(.inline)', '')
-        source = source.replace('.tabViewStyle(.page(indexDisplayMode: .never))', '.tabViewStyle(.automatic)')
         needle = '.appendingPathComponent("PodcastStudy", isDirectory: true)'
         if needle in source:
             source = source.replace(needle, '.appendingPathComponent("PodcastStudy-MacPreview", isDirectory: true)')
@@ -51,6 +51,9 @@ with tempfile.TemporaryDirectory(prefix='podcast-ui-preview-') as temp:
         executable = app / 'Contents/MacOS/PodcastStudyPreview'
         executable.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([*command, '-o', str(executable)], check=True)
+        resources = ROOT / 'PodcastStudy/Resources'
+        if resources.exists():
+            shutil.copytree(resources, app / 'Contents/Resources', dirs_exist_ok=True)
         info = plistlib.loads((ROOT / 'PodcastStudy/Info.plist').read_bytes())
         info.update(CFBundleIdentifier='com.jayden.podcaststudy.preview', CFBundleExecutable='PodcastStudyPreview', CFBundleName='PodcastStudyPreview', CFBundleDisplayName='Podcast Study Preview', CFBundleShortVersionString='1.0', CFBundleVersion='1', NSHighResolutionCapable=True, LSMinimumSystemVersion='14.0')
         for key in ['LSRequiresIPhoneOS', 'UIApplicationSceneManifest', 'UILaunchScreen', 'UISupportedInterfaceOrientations']:

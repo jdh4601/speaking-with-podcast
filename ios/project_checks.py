@@ -31,6 +31,14 @@ for key in configs:
     assert float(settings['IPHONEOS_DEPLOYMENT_TARGET']) >= 17
     assert settings['TARGETED_DEVICE_FAMILY'] == '1'
 print(f'PASS Xcode target references all {len(paths)} Swift sources')
+resource_phase = next(phase for phase in phases if phase['isa'] == 'PBXResourcesBuildPhase')
+resource_paths = [objects[objects[key]['fileRef']]['path'] for key in resource_phase['files']]
+expected_resources = {str(path.relative_to(ROOT)) for path in (ROOT / 'PodcastStudy/Resources').glob('*.png')}
+assert set(resource_paths) == expected_resources and expected_resources, 'Missing bundled character resources'
+for path in resource_paths:
+    assert (ROOT / path).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'), f'Invalid PNG resource: {path}'
+print('PASS character PNG included in app resources')
+
 
 with (ROOT / 'PodcastStudy/Info.plist').open('rb') as handle:
     info = plistlib.load(handle)
