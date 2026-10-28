@@ -42,6 +42,19 @@ struct StudyPack: Codable {
                       !card.sourceSentence.isEmpty else {
                     throw StudyError.invalid("원문 음성 정보가 올바르지 않습니다.")
                 }
+                if let words = audio.words {
+                    guard !words.isEmpty, words.count <= 2000 else { throw StudyError.invalid("단어별 음성 시간이 올바르지 않습니다.") }
+                    var previousStart = 0.0, previousEnd = 0.0
+                    for word in words {
+                        guard (1...200).contains(word.word.trimmingCharacters(in: .whitespacesAndNewlines).count),
+                              !ExpressionContext.audioTokens(word.word).isEmpty,
+                              word.start.isFinite, word.end.isFinite, word.start >= previousStart,
+                              word.end >= previousEnd, word.end > word.start, word.end <= audio.duration else {
+                            throw StudyError.invalid("단어별 음성 시간이 올바르지 않습니다.")
+                        }
+                        previousStart = word.start; previousEnd = word.end
+                    }
+                }
                 if requireAudioData {
                     guard let encoded = audio.base64, let data = Data(base64Encoded: encoded),
                           !data.isEmpty, data.count <= 8 * 1024 * 1024 else {
@@ -80,6 +93,74 @@ struct OriginalAudio: Codable {
     var duration: Double
     var start: Double
     var kind: String
+    var words: [AudioWord]? = nil
+}
+
+struct AudioWord: Codable {
+    var word: String
+    var start: Double
+    var end: Double
+}
+
+struct AudioPlaybackRange: Equatable {
+    var start: Double
+    var end: Double
+}
+
+extension OriginalAudio {
+    func measuredRange(for text: String) -> AudioPlaybackRange? {
+        let wanted = ExpressionContext.audioTokens(text)
+        guard !wanted.isEmpty, let words else { return nil }
+        let observed = words.flatMap { word in
+            ExpressionContext.audioTokens(word.word).map { ($0, word.start, word.end) }
+        }
+        guard observed.count >= wanted.count else { return nil }
+        for index in 0...(observed.count - wanted.count) {
+            if observed[index..<(index + wanted.count)].map({ $0.0 }) == wanted {
+                let start = observed[index].1, end = observed[index + wanted.count - 1].2
+                guard start.isFinite, end.isFinite, start >= 0, end > start, end <= duration else { return nil }
+                return AudioPlaybackRange(start: start, end: end)
+            }
+        }
+        return nil
+    }
+}
+
+extension StudyCard {
+    var displayExcerpt: String {
+        let basic = ExpressionContext.excerpt(source: sourceSentence, quote: quote, expression: expression)
+        guard let audio, audio.words != nil, audio.measuredRange(for: basic) == nil else { return basic }
+        // Keep a shorter verified context when ASR differs on a name/number outside the expression.
+        let parts = basic.split(whereSeparator: \.isWhitespace).filter { $0 != "…" }.map(String.init)
+        let text = parts.joined(separator: " ")
+        let slices = text.split(separator: " ")
+        guard let target = ExpressionContext.matches(in: text, expression: expression).first,
+              let first = slices.firstIndex(where: { $0.endIndex > target.lowerBound }),
+              let last = slices.lastIndex(where: { $0.startIndex < target.upperBound }) else { return basic }
+        var best: String?, bestCount = 0
+        for start in 0...first {
+            for end in (last + 1)...parts.count where end - start > bestCount {
+                let candidate = parts[start..<end].joined(separator: " ")
+                if audio.measuredRange(for: candidate) != nil {
+                    best = (start > 0 || basic.hasPrefix("…") ? "… " : "") + candidate
+                        + (end < parts.count || basic.hasSuffix("…") ? "\u{00A0}…" : "")
+                    bestCount = end - start
+                }
+            }
+        }
+        return best ?? basic
+    }
+
+    /// Use observed word boundaries, never a word-count/duration estimate.
+    var excerptAudioRange: AudioPlaybackRange? {
+        guard let audio else { return nil }
+        let excerpt = displayExcerpt
+        if audio.words != nil { return audio.measuredRange(for: excerpt) }
+        let wanted = ExpressionContext.audioTokens(excerpt)
+        // Legacy packs are safe only when the entire recorded sentence is visible.
+        guard !wanted.isEmpty, wanted == ExpressionContext.audioTokens(sourceSentence) else { return nil }
+        return AudioPlaybackRange(start: 0, end: audio.duration)
+    }
 }
 
 struct CardProgress: Codable {
@@ -164,6 +245,14 @@ enum ReviewSwipeAction: Equatable {
 
 /// A short verbatim excerpt that keeps the target expression in view.
 enum ExpressionContext {
+    static func audioTokens(_ text: String) -> [String] {
+        let text = text.lowercased().replacingOccurrences(of: "’", with: "'")
+        let regex = try! NSRegularExpression(pattern: "[a-z0-9]+(?:'[a-z]+)?")
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+            Range($0.range, in: text).map { String(text[$0]) }
+        }
+    }
+
     static func matches(in text: String, expression: String) -> [Range<String.Index>] {
         let words = expression.split(whereSeparator: \.isWhitespace)
         guard !words.isEmpty else { return [] }

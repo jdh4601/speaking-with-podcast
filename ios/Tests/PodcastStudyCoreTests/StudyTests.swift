@@ -251,4 +251,68 @@ final class StudyTests: XCTestCase {
         XCTAssertEqual(ExpressionContext.excerpt(source: "", quote: "", expression: ""), "")
     }
 
+    func testExcerptAudioUsesOnlyObservedVisibleWords() throws {
+        var card = pack().episode.cards[0]
+        let tokens = Array(repeating: "background", count: 20) + ["I", "see", "your", "point"] + Array(repeating: "following", count: 30)
+        card.sourceSentence = tokens.joined(separator: " ")
+        card.audio?.duration = Double(tokens.count) * 0.2 + 2
+        card.audio?.words = tokens.enumerated().map { index, token in
+            AudioWord(word: token, start: Double(index) * 0.2 + 1, end: Double(index + 1) * 0.2 + 1)
+        }
+        let range = try XCTUnwrap(card.excerptAudioRange)
+        let visible = ExpressionContext.audioTokens(card.displayExcerpt)
+        let first = try XCTUnwrap(tokens.indices.first { index in
+            index + visible.count <= tokens.count && tokens[index..<(index + visible.count)].map { $0.lowercased() } == visible
+        })
+        XCTAssertEqual(range.start, card.audio?.words?[first].start)
+        XCTAssertEqual(range.end, card.audio?.words?[first + visible.count - 1].end)
+        XCTAssertGreaterThan(range.start, 0)
+        XCTAssertLessThan(range.end, try XCTUnwrap(card.audio?.duration))
+        card.audio?.words = nil
+        XCTAssertNil(card.excerptAudioRange, "A legacy long clip must not continue beyond the displayed excerpt")
+    }
+
+    func testExcerptAudioHandlesLegacyFullSentenceAndMissingAlignment() throws {
+        var card = pack().episode.cards[0]
+        XCTAssertEqual(card.excerptAudioRange, AudioPlaybackRange(start: 0, end: 2))
+        card.audio?.words = [AudioWord(word: "Something else", start: 0, end: 1)]
+        XCTAssertNil(card.excerptAudioRange)
+        card.sourceSentence = "WHAT IT’S LIKE to learn."
+        card.expression = "what it's like"
+        card.audio?.words = [AudioWord(word: "What", start: 0.1, end: 0.3), AudioWord(word: "it's", start: 0.3, end: 0.5),
+                             AudioWord(word: "like", start: 0.5, end: 0.7), AudioWord(word: "to", start: 0.8, end: 1), AudioWord(word: "learn.", start: 1, end: 1.5)]
+        XCTAssertEqual(card.excerptAudioRange, AudioPlaybackRange(start: 0.1, end: 1.5))
+    }
+
+    func testAudioWordMetadataValidationAndImportRoundTrip() throws {
+        var original = pack()
+        let words = [AudioWord(word: "I see", start: 0.1, end: 0.5), AudioWord(word: "your point", start: 0.5, end: 1.8)]
+        original.episode.cards[0].audio?.words = words
+        let storage = try library()
+        _ = try storage.importData(JSONEncoder().encode(original))
+        let restored = try XCTUnwrap(storage.loadEpisodes().first?.cards.first)
+        XCTAssertEqual(restored.excerptAudioRange, AudioPlaybackRange(start: 0.1, end: 1.8))
+        for invalid in [AudioWord(word: "", start: 0, end: 1), AudioWord(word: "word", start: -1, end: 1),
+                        AudioWord(word: "word", start: 0, end: 3), AudioWord(word: "word", start: 0, end: .nan)] {
+            original.episode.cards[0].audio?.words = [invalid]
+            XCTAssertThrowsError(try original.validate())
+        }
+        original.episode.cards[0].audio?.words = [words[1], words[0]]
+        XCTAssertThrowsError(try original.validate())
+    }
+
+    func testExcerptShortensUnalignedSurroundingWordsWithoutDroppingExpression() throws {
+        var card = pack().episode.cards[0]
+        card.expression = "to give you guys more context"
+        card.sourceSentence = "And to give you guys more context, in 2021 and 2022, when Tanay and Sahil were working."
+        let spoken = "And to give you guys more context in twenty twenty one".split(separator: " ")
+        card.audio?.duration = 6
+        card.audio?.words = spoken.enumerated().map { index, word in
+            AudioWord(word: String(word), start: Double(index) * 0.3, end: Double(index + 1) * 0.3)
+        }
+        XCTAssertEqual(card.displayExcerpt, "And to give you guys more context, in\u{00A0}…")
+        XCTAssertEqual(card.excerptAudioRange, AudioPlaybackRange(start: 0, end: 2.4))
+        XCTAssertTrue(card.displayExcerpt.contains(card.expression))
+    }
+
 }

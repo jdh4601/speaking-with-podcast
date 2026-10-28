@@ -283,13 +283,13 @@ private struct ExpressionPage: View {
 
     private var audioLine: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if item.card.audio != nil {
+            if item.card.excerptAudioRange != nil {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 16) { audioIndicator; replay }
                     VStack(alignment: .leading, spacing: 4) { audioIndicator; replay }
                 }
             } else {
-                Label("원음 없음 · 글로 복습해요", systemImage: "speaker.slash")
+                Label(item.card.audio == nil ? "원음 없음 · 글로 복습해요" : "Mac에서 짧은 음성을 다시 가져오세요", systemImage: "speaker.slash")
                     .studyFont(13, .semibold).foregroundStyle(StudyStyle.muted)
 
             }
@@ -312,8 +312,7 @@ private struct ExpressionPage: View {
     }
 
     private var sourceText: some View {
-        let excerpt = ExpressionContext.excerpt(source: item.card.sourceSentence,
-                                                quote: item.card.quote, expression: item.card.expression)
+        let excerpt = item.card.displayExcerpt
         return VStack(alignment: .leading, spacing: 12) {
             Divider()
             Text("원문 일부").studyFont(12, .semibold).foregroundStyle(StudyStyle.muted)

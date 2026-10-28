@@ -29,7 +29,7 @@ final class StudyModel: ObservableObject {
     private(set) var library: PackLibrary?
     private var player: AVAudioPlayer?
     private var playbackDelegate: AudioCompletionDelegate?
-    private var repeatTask: Task<Void, Never>?
+    private var excerptTask: Task<Void, Never>?
     private var playbackToken = UUID()
     private var observerTokens: [NSObjectProtocol] = []
 
@@ -48,7 +48,7 @@ final class StudyModel: ObservableObject {
 
     deinit {
         for token in observerTokens { NotificationCenter.default.removeObserver(token) }
-        repeatTask?.cancel()
+        excerptTask?.cancel()
     }
 
     /// File imports and progress changes are mutually exclusive on the main actor.
@@ -146,7 +146,7 @@ final class StudyModel: ObservableObject {
 
     func stopAudio(message: String = "재생을 멈췄어요.") {
         playbackToken = UUID()
-        repeatTask?.cancel(); repeatTask = nil
+        excerptTask?.cancel(); excerptTask = nil
         player?.delegate = nil; player?.stop(); player = nil
         playbackDelegate = nil
         let wasActive = audioActive
@@ -169,7 +169,7 @@ final class StudyModel: ObservableObject {
         play(item, presentErrors: false)
     }
 
-    func play(_ item: StudyItem, times: Int = 1, slow: Bool = false, presentErrors: Bool = true) {
+    func play(_ item: StudyItem, presentErrors: Bool = true) {
         guard !importing else { return }
         stopAudio()
         audioCardID = item.id
@@ -178,7 +178,11 @@ final class StudyModel: ObservableObject {
             error = item.card.audioUnavailableReason ?? "이 표현에는 원문 음성이 없습니다."
             return
         }
-        let repetitions = min(3, max(1, times))
+        guard let range = item.card.excerptAudioRange else {
+            audioStatus = "짧은 구간 음성 준비 필요"
+            if presentErrors { error = "표시된 구절의 단어별 음성 시간이 없습니다. Mac에서 학습 꾸러미를 다시 내보내 가져오세요." }
+            return
+        }
         let token = UUID()
         playbackToken = token
         do {
@@ -187,24 +191,15 @@ final class StudyModel: ObservableObject {
             try AVAudioSession.sharedInstance().setActive(true)
             #endif
             let audio = try AVAudioPlayer(contentsOf: library.audioURL(episodeID: item.episode.id, cardID: item.id))
-            audio.enableRate = true; audio.rate = slow ? 0.8 : 1
-            var round = 1
+            guard range.start < audio.duration, range.end <= audio.duration + 0.1 else {
+                throw StudyError.invalid("짧은 구절의 음성 시간이 파일과 일치하지 않습니다.")
+            }
+            let end = min(range.end, audio.duration)
+            audio.currentTime = range.start
             let delegate = AudioCompletionDelegate { [weak self] success in
                 guard let self, self.playbackToken == token else { return }
                 guard success else { self.playbackFailed(presentError: presentErrors); return }
-                guard round < repetitions else {
-                    self.stopAudio(message: "재생 완료")
-                    return
-                }
-                round += 1
-                self.audioStatus = "다음 원음 대기 · \(round)/\(repetitions)회"
-                self.repeatTask = Task { [weak self] in
-                    do { try await Task.sleep(for: .milliseconds(600)) } catch { return }
-                    guard let self, !Task.isCancelled, self.playbackToken == token, let player = self.player else { return }
-                    player.currentTime = 0
-                    guard player.play() else { self.playbackFailed(presentError: presentErrors); return }
-                    self.audioStatus = "원음 재생 중 · \(round)/\(repetitions)회"
-                }
+                self.stopAudio(message: "재생 완료")
             }
             playbackDelegate = delegate
             audio.delegate = delegate
@@ -212,7 +207,17 @@ final class StudyModel: ObservableObject {
             player = audio
             guard audio.play() else { throw StudyError.invalid("음성을 재생하지 못했습니다.") }
             audioActive = true
-            audioStatus = "원음 재생 중 · 1/\(repetitions)회"
+            audioStatus = "원음 재생 중"
+            excerptTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    guard let self, self.playbackToken == token, let player = self.player else { return }
+                    if player.currentTime >= end {
+                        self.stopAudio(message: "재생 완료")
+                        return
+                    }
+                    do { try await Task.sleep(for: .milliseconds(20)) } catch { return }
+                }
+            }
         } catch { playbackFailed(error.localizedDescription, presentError: presentErrors) }
     }
 
