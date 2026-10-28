@@ -46,7 +46,7 @@ info = {
     'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)',
     'LSRequiresIPhoneOS': True, 'UIApplicationSceneManifest': {'UIApplicationSupportsMultipleScenes': False},
     'UILaunchScreen': {}, 'UISupportedInterfaceOrientations': ['UIInterfaceOrientationPortrait'],
-    'LSSupportsOpeningDocumentsInPlace': True,
+    'LSSupportsOpeningDocumentsInPlace': True, 'UIFileSharingEnabled': True,
     'CFBundleDocumentTypes': [{'CFBundleTypeName': 'Podcast Study Pack', 'CFBundleTypeRole': 'Viewer', 'LSHandlerRank': 'Owner', 'LSItemContentTypes': ['com.jayden.podcast-study.pack', 'com.jayden.podcast-study.progress']}],
     'UTExportedTypeDeclarations': [{'UTTypeIdentifier': 'com.jayden.podcast-study.pack', 'UTTypeDescription': 'Podcast Study Pack', 'UTTypeConformsTo': ['public.json'], 'UTTypeTagSpecification': {'public.filename-extension': ['podstudy'], 'public.mime-type': 'application/vnd.podcast-study+json'}}, {'UTTypeIdentifier': 'com.jayden.podcast-study.progress', 'UTTypeDescription': 'Podcast Study Progress Backup', 'UTTypeConformsTo': ['public.json'], 'UTTypeTagSpecification': {'public.filename-extension': ['podprogress'], 'public.mime-type': 'application/vnd.podcast-study-progress+json'}}]
 }

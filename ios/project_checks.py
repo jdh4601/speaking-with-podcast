@@ -42,6 +42,7 @@ for suffix, identifier in [('podstudy', 'com.jayden.podcast-study.pack'), ('podp
     assert 'public.json' in declaration['UTTypeConformsTo']
     assert suffix in declaration['UTTypeTagSpecification']['public.filename-extension']
 assert info['LSSupportsOpeningDocumentsInPlace'] is True
+assert info['UIFileSharingEnabled'] is True
 print('PASS study-pack and progress-backup file registration')
 
 scheme = ET.parse(ROOT / 'PodcastStudy.xcodeproj/xcshareddata/xcschemes/PodcastStudy.xcscheme').getroot()
