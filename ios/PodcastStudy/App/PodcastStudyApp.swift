@@ -39,9 +39,3 @@ struct PodcastStudyApp: App {
         }
     }
 }
-
-enum StudyStyle {
-    static let paper = Color(red: 0.96, green: 0.95, blue: 0.91)
-    static let ink = Color(red: 0.15, green: 0.20, blue: 0.17)
-    static let accent = Color(red: 0.22, green: 0.38, blue: 0.29)
-}

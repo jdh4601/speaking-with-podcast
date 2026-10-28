@@ -4,6 +4,8 @@ C48F5A42681BC786D22EDEE4 = { isa = PBXFileReference; lastKnownFileType = sourcec
 560B2A98369835572F185670 = { isa = PBXBuildFile; fileRef = C48F5A42681BC786D22EDEE4; };
 5ACBC7360F8E4133A4653CC0 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PodcastStudy/App/PodcastStudyApp.swift"; sourceTree = "<group>"; };
 83C94555B30BCB424F4BE31E = { isa = PBXBuildFile; fileRef = 5ACBC7360F8E4133A4653CC0; };
+E3ADC06CDF20A2EF270D89BA = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PodcastStudy/App/StudyDesign.swift"; sourceTree = "<group>"; };
+10683F37CF35684429F54B60 = { isa = PBXBuildFile; fileRef = E3ADC06CDF20A2EF270D89BA; };
 22A802705A1794B3EED88A0E = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PodcastStudy/App/StudyFeed.swift"; sourceTree = "<group>"; };
 4DF491042B5583CD1BA49F23 = { isa = PBXBuildFile; fileRef = 22A802705A1794B3EED88A0E; };
 0B16DFDC4A3B7D8D6CCDDBE5 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PodcastStudy/App/StudyModel.swift"; sourceTree = "<group>"; };
@@ -13,11 +15,11 @@ D989B5D7B64A2828887ECE3C = { isa = PBXBuildFile; fileRef = 6E011408852F90BA394E8
 E7797C86AE548A3AE3ED665F = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PodcastStudy/Core/PackLibrary.swift"; sourceTree = "<group>"; };
 1B854D3645D9E7F49C80F444 = { isa = PBXBuildFile; fileRef = E7797C86AE548A3AE3ED665F; };
 A8792157CB4F27FB949C035F = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PodcastStudy.app; sourceTree = BUILT_PRODUCTS_DIR; };
-878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (560B2A98369835572F185670,83C94555B30BCB424F4BE31E,4DF491042B5583CD1BA49F23,457115A9A9183056BB03CD65,D989B5D7B64A2828887ECE3C,1B854D3645D9E7F49C80F444); runOnlyForDeploymentPostprocessing = 0; };
+878A52FC5FF6A57D50B7B870 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (560B2A98369835572F185670,83C94555B30BCB424F4BE31E,10683F37CF35684429F54B60,4DF491042B5583CD1BA49F23,457115A9A9183056BB03CD65,D989B5D7B64A2828887ECE3C,1B854D3645D9E7F49C80F444); runOnlyForDeploymentPostprocessing = 0; };
 E2AA269EB967A8853A258BFA = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 41D311A605520FC7B8B9A980 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 0A3E27B8CA818264D75C8D81 = { isa = PBXGroup; children = (A8792157CB4F27FB949C035F); name = Products; sourceTree = "<group>"; };
-0D6E4079E36703EBD37C0072 = { isa = PBXGroup; children = (C48F5A42681BC786D22EDEE4,5ACBC7360F8E4133A4653CC0,22A802705A1794B3EED88A0E,0B16DFDC4A3B7D8D6CCDDBE5,6E011408852F90BA394E88D3,E7797C86AE548A3AE3ED665F,0A3E27B8CA818264D75C8D81); sourceTree = "<group>"; };
+0D6E4079E36703EBD37C0072 = { isa = PBXGroup; children = (C48F5A42681BC786D22EDEE4,5ACBC7360F8E4133A4653CC0,E3ADC06CDF20A2EF270D89BA,22A802705A1794B3EED88A0E,0B16DFDC4A3B7D8D6CCDDBE5,6E011408852F90BA394E88D3,E7797C86AE548A3AE3ED665F,0A3E27B8CA818264D75C8D81); sourceTree = "<group>"; };
 2B23A31EEC75B029432F2445 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; }; };
 EDDA600A3F771F810A8065C9 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; CODE_SIGN_STYLE = Automatic; PRODUCT_BUNDLE_IDENTIFIER = com.jayden.podcaststudy; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = PodcastStudy/Info.plist; TARGETED_DEVICE_FAMILY = 1; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; MARKETING_VERSION = 1.0; CURRENT_PROJECT_VERSION = 1; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf; }; };
 07CA1E69F6068DEA30A4DA6B = { isa = XCBuildConfiguration; name = Release; buildSettings = { CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; }; };
