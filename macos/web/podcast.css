@@ -9,3 +9,29 @@
 #pod-youtube{font-size:10px;color:var(--green);text-decoration:underline;display:inline-block;margin:0 0 12px}#pod-youtube[hidden]{display:none}.query-row #pod-search{font-size:10px}
 
 .extract-count{display:flex;align-items:center;gap:6px;font-size:10px;white-space:nowrap;margin:0}.extract-count select{padding:5px 6px;font-size:11px;border:1px solid var(--line);background:#fff;border-radius:4px}.transcript-footer{flex-wrap:wrap}.transcript-footer>span{margin-right:auto}
+
+#pod-source-translation{font-size:12px;line-height:1.7;color:var(--muted);margin:0 0 20px}
+
+.study-export{padding:14px 0;border-bottom:1px solid #d8ddd5;margin-bottom:16px;display:flex;align-items:center;flex-wrap:wrap;gap:10px}.study-export label{display:flex;align-items:center;gap:6px;font-size:12px}.study-export input{width:auto}.study-export p{flex-basis:100%;font-size:12px;line-height:1.5;margin:0;color:#52634f}
+
+/* Keep setup compact so the expressions have the full study area. */
+#podcast-study .study-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);gap:12px}
+#podcast-study .study-source{height:auto}
+#pod-form{display:flex;align-items:flex-end;gap:12px}
+.url-field{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.url-field label{font-size:11px}
+#pod-query{width:100%;box-sizing:border-box}
+#pod-form .extract-count{flex-direction:column;align-items:flex-start;gap:6px}
+#pod-form select,#pod-form button{min-height:36px}
+#pod-form button{white-space:nowrap}
+#pod-progress{margin-top:14px}
+.progress-heading,.progress-steps{display:flex;justify-content:space-between;gap:10px;font-size:10px;color:var(--muted)}
+.progress-heading{color:var(--green);margin-bottom:6px}
+#pod-progress-bar{display:block;width:100%;height:8px;accent-color:var(--green);border:0;border-radius:8px;overflow:hidden;background:var(--line)}
+#pod-progress-bar::-webkit-progress-bar{background:var(--line);border-radius:8px}
+#pod-progress-bar::-webkit-progress-value{background:var(--green);border-radius:8px;transition:width .3s ease}
+.progress-steps{margin-top:6px;font-size:9px}
+#podcast-study .pod-status{min-height:14px;margin-top:8px}
+@media(max-width:760px){#podcast-study .study-layout{flex:1;overflow:visible}#podcast-study .study-review{min-height:400px}}
+@media(max-width:480px){#pod-form{flex-wrap:wrap}#pod-form .url-field{flex-basis:100%}#pod-form button{flex:1}}
+.study-export .pack-episode{font-weight:600;color:var(--green,#365e46);overflow-wrap:anywhere}.study-export .pack-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;width:100%}.study-export progress{width:100%;height:6px;accent-color:var(--green,#365e46)}.study-export details{width:100%;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.study-export details summary{cursor:pointer;font-weight:600}.study-export details ul{padding-left:20px;margin:8px 0}.study-export .error{color:#a23333}@media(max-width:480px){.study-export .pack-actions button{flex:1;min-height:44px}.study-export .pack-actions label{flex-basis:100%}}

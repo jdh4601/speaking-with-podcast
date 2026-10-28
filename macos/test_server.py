@@ -104,3 +104,196 @@ class LargeRequestTests(unittest.TestCase):
                     time.sleep(.01)
                 self.assertEqual(server.JOBS[job]['result'],{'receivedLength':650000,'count':30})
         finally:http.shutdown();http.server_close();thread.join()
+
+class StartupTests(unittest.TestCase):
+    def test_busy_port_falls_back_and_serves_dashboard(self):
+        import threading, urllib.request
+        occupied=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
+        http=server.create_server(occupied.server_port)
+        thread=threading.Thread(target=http.serve_forever,daemon=True)
+        thread.start()
+        try:
+            self.assertNotEqual(http.server_port,occupied.server_port)
+            base=f'http://127.0.0.1:{http.server_port}'
+            with urllib.request.urlopen(base+'/') as response:
+                self.assertEqual(response.status,200)
+                self.assertIn('runtime.js',response.read().decode())
+            request=urllib.request.Request(base+'/api/health',headers={'X-English-Token':server.TOKEN})
+            with urllib.request.urlopen(request) as response:
+                self.assertTrue(__import__('json').load(response)['ok'])
+            with self.assertRaises(urllib.error.HTTPError) as denied:
+                urllib.request.urlopen(base+'/api/health')
+            self.assertEqual(denied.exception.code,403)
+            denied.exception.close()
+        finally:
+            http.shutdown();http.server_close();thread.join();occupied.server_close()
+
+    def test_other_bind_errors_are_reported(self):
+        import errno
+        from unittest.mock import patch
+        with patch.object(server,'ThreadingHTTPServer',side_effect=PermissionError(errno.EACCES,'denied')) as bind:
+            with self.assertRaises(PermissionError):server.create_server()
+            self.assertEqual(bind.call_count,1)
+
+    def test_server_exits_when_parent_is_gone(self):
+        import os, subprocess, sys
+        process=subprocess.Popen([sys.executable,server.__file__],env={**os.environ,'ENGLISH_PARENT_PID':'-1','ENGLISH_PORT':'0'},stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        try:
+            self.assertEqual(process.wait(timeout=4),0)
+        finally:
+            if process.poll() is None:process.kill()
+            process.communicate()
+
+class YouTubeDownloadTests(unittest.TestCase):
+    def test_403_reextracts_without_resuming_partial_file(self):
+        import audio_clips, tempfile, pathlib, json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=pathlib.Path(tmp)
+            calls=[]
+            def download(args,**kwargs):
+                calls.append(args)
+                if len(calls)==1:raise ValueError('HTTP Error 403: Forbidden')
+                (folder/'source.mp3').write_bytes(b'a'*2000)
+            with patch.object(audio_clips,'discover_audio',return_value={'youtube':'https://youtu.be/abcdefghijk','sourceUrl':'https://youtu.be/abcdefghijk'}):
+                source,info=audio_clips.download_source({},folder,download,'yt-dlp')
+            self.assertTrue(source.exists())
+            self.assertEqual(len(calls),2)
+            self.assertIn('--no-continue',calls[1])
+            self.assertIn('--force-overwrites',calls[1])
+            self.assertEqual(calls[1][-2:],['--','https://youtu.be/abcdefghijk'])
+            self.assertEqual(json.loads((folder/'source.json').read_text()),info)
+
+    def test_persistent_403_is_actionable_and_does_not_cache_success(self):
+        import audio_clips, tempfile, pathlib
+        from unittest.mock import patch, Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=pathlib.Path(tmp)
+            download=Mock(side_effect=ValueError('HTTP Error 403: Forbidden'))
+            with patch.object(audio_clips,'discover_audio',return_value={'youtube':'https://youtu.be/abcdefghijk'}):
+                with self.assertRaisesRegex(ValueError,'YouTube.*403'):
+                    audio_clips.download_source({},folder,download,'yt-dlp')
+            self.assertEqual(download.call_count,2)
+            self.assertFalse((folder/'source.json').exists())
+
+    def test_unrelated_download_errors_are_not_retried(self):
+        import audio_clips, tempfile, pathlib
+        from unittest.mock import patch, Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            download=Mock(side_effect=ValueError('private video'))
+            with patch.object(audio_clips,'discover_audio',return_value={'youtube':'https://youtu.be/abcdefghijk'}):
+                with self.assertRaisesRegex(ValueError,'private video'):
+                    audio_clips.download_source({},pathlib.Path(tmp),download,'yt-dlp')
+            self.assertEqual(download.call_count,1)
+
+class DownloaderRuntimeTests(unittest.TestCase):
+    def test_app_runtime_is_preferred_over_homebrew(self):
+        import youtube_tools
+        from unittest.mock import patch
+        with patch.dict('os.environ',{},clear=True),patch.object(youtube_tools.pathlib.Path,'is_file',return_value=True):
+            self.assertEqual(youtube_tools.downloader_path(),str(youtube_tools.RUNTIME/'bin/yt-dlp'))
+
+    def test_explicit_downloader_override_is_respected(self):
+        import youtube_tools
+        from unittest.mock import patch
+        with patch.dict('os.environ',{'ENGLISH_YTDLP':'/custom/yt-dlp'}):
+            self.assertEqual(youtube_tools.downloader_path(),'/custom/yt-dlp')
+
+class SentenceAudioTests(unittest.TestCase):
+    def test_sentence_extends_beyond_quote_and_across_captions(self):
+        import audio_clips
+        transcript='[00:00:01] An earlier sentence. And the reason I say\n[00:00:03] this is because in hindsight\n[00:00:05] it all makes a lot of sense. Next sentence.'
+        card={'expression':'it all makes a lot of sense','quote':'in hindsight it all makes a lot of sense.'}
+        context=audio_clips.sentence_context(card,transcript)
+        self.assertEqual(context['text'],'And the reason I say this is because in hindsight it all makes a lot of sense.')
+        self.assertEqual(context['start'],1)
+        self.assertNotIn('Next',context['tokens'])
+
+    def test_repeated_expression_uses_quote_and_excludes_speaker_names(self):
+        import audio_clips
+        transcript='Alex [00:00:01]: I see your point.\nSam [00:00:10]: Well, I see your point about the product.\nAlex [00:00:20]: Another sentence.'
+        context=audio_clips.sentence_context({'expression':'I see your point','quote':'I see your point about the product.'},transcript)
+        self.assertEqual(context['text'],'Well, I see your point about the product.')
+        self.assertEqual(context['start'],10)
+
+    def test_missing_sentence_end_is_not_replaced_by_a_phrase(self):
+        import audio_clips
+        with self.assertRaisesRegex(ValueError,'문장의 끝'):
+            audio_clips.sentence_context({'expression':'your point','quote':'your point'},'[00:00:01] I see your point')
+
+    def test_alignment_covers_sentence_not_only_expression(self):
+        import audio_clips
+        sentence='And the reason is that it all makes a lot of sense'
+        words=[{'word':word,'start':i*.3,'end':(i+1)*.3} for i,word in enumerate(sentence.split())]
+        context={'tokens':audio_clips.tokens(sentence),'expressionStart':102}
+        a,b=audio_clips.align_sentence(words,context,'it all makes a lot of sense',100)
+        self.assertEqual(a,100)
+        self.assertAlmostEqual(b,103.6)
+
+    def test_partial_sentence_does_not_align(self):
+        import audio_clips
+        words=[{'word':word,'start':i,'end':i+1} for i,word in enumerate('it all makes a lot of sense'.split())]
+        context={'tokens':audio_clips.tokens('And the reason is that it all makes a lot of sense'),'expressionStart':0}
+        self.assertIsNone(audio_clips.align_sentence(words,context,'it all makes a lot of sense',0))
+
+    def test_old_phrase_clip_is_not_reused(self):
+        import audio_clips,tempfile,pathlib,json,uuid,hashlib
+        from unittest.mock import patch
+        sid=str(uuid.uuid4());card={'expression':'your point','quote':'I see your point.'}
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);folder=root/'audio'/sid;folder.mkdir(parents=True)
+            session={'id':sid,'url':'https://youtu.be/abcdefghijk','transcript':'[00:00:01] I see your point.\n[00:00:04] Next sentence.','expressions':[card]}
+            (root/(sid+'.json')).write_text(json.dumps(session))
+            old=hashlib.sha256((card['expression']+'\n'+card['quote']).encode()).hexdigest()[:16]
+            (folder/f'0-{old}.mp3').write_bytes(b'old clip')
+            (folder/f'0-{old}.json').write_text(json.dumps({'kind':'old-phrase'}))
+            def run(args,**kwargs):
+                output=pathlib.Path(args[-1])
+                if output.suffix=='.json':
+                    output.write_text(json.dumps({'words':[{'word':word,'start':i*.4+1,'end':(i+1)*.4+1} for i,word in enumerate('I see your point'.split())]}))
+                else:output.write_bytes(b'new sentence clip')
+            with patch.object(audio_clips,'AUDIO_PYTHON',__file__),patch.object(audio_clips,'download_source',return_value=(folder/'source.mp3',{'sourceUrl':session['url']})):
+                result=audio_clips.prepare({'sessionId':sid,'index':0},root,run,'yt-dlp')
+            self.assertEqual(result['kind'],'original-podcast-sentence')
+            self.assertEqual(result['sentence'],'I see your point.')
+            self.assertNotIn(old,result['clipUrl'])
+
+class SourceSentenceTranslationTests(unittest.TestCase):
+    def test_source_sentence_is_full_original_not_practice_example(self):
+        session={'transcript':'[00:00:01] For me personally, I love building products.\n[00:00:05] Another sentence.','expressions':[{'expression':'for me personally','quote':'For me personally','example':'For me personally, smaller classes are easier.'}]}
+        server.attach_source_sentences(session)
+        self.assertEqual(session['expressions'][0]['sourceSentence'],'For me personally, I love building products.')
+
+    def test_changed_sentence_invalidates_translation(self):
+        session={'transcript':'[00:00:01] I see your point.','expressions':[{'expression':'your point','quote':'I see your point.','sourceSentence':'An older sentence.','sourceSentenceTranslation':'잘못된 이전 해석'}]}
+        server.attach_source_sentences(session)
+        self.assertNotIn('sourceSentenceTranslation',session['expressions'][0])
+
+    def test_translates_source_and_preserves_practice_example(self):
+        import tempfile,pathlib,json,uuid
+        from unittest.mock import patch
+        sid=str(uuid.uuid4())
+        session={'id':sid,'transcript':'[00:00:01] I see your point.','expressions':[{'expression':'your point','quote':'I see your point.','example':'I see your point about school.','exampleTranslation':'학교에 관한 의견은 이해해요.'}]}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA',pathlib.Path(tmp)):
+            path=pathlib.Path(tmp)/(sid+'.json');path.write_text(json.dumps(session))
+            def translate(prompt,schema):
+                self.assertIn('I see your point.',prompt)
+                self.assertNotIn('about school',prompt)
+                return {'translations':[{'index':0,'translation':'무슨 말씀인지 이해해요.'}]}
+            with patch.object(server,'codex_json',side_effect=translate) as model:
+                result=server.translate_source_sentences({'sessionId':sid})
+                again=server.translate_source_sentences({'sessionId':sid})
+                self.assertEqual(model.call_count,1)
+            card=result['expressions'][0]
+            self.assertEqual(card['sourceSentenceTranslation'],'무슨 말씀인지 이해해요.')
+            self.assertEqual(card['example'],session['expressions'][0]['example'])
+            self.assertEqual(again,result)
+
+    def test_incomplete_translation_is_not_saved(self):
+        import tempfile,pathlib,json,uuid
+        from unittest.mock import patch
+        sid=str(uuid.uuid4());session={'id':sid,'transcript':'[00:00:01] I see your point.','expressions':[{'expression':'your point','quote':'I see your point.'}]}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA',pathlib.Path(tmp)),patch.object(server,'codex_json',return_value={'translations':[]}):
+            path=pathlib.Path(tmp)/(sid+'.json');path.write_text(json.dumps(session))
+            with self.assertRaises(ValueError):server.translate_source_sentences({'sessionId':sid})
+            self.assertEqual(json.loads(path.read_text()),session)

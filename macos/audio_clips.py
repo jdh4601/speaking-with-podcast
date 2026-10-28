@@ -1,5 +1,6 @@
 """Find the original recording, align actual spoken words, and cache short MP3 clips."""
-import hashlib,html,json,pathlib,re,socket,ipaddress,urllib.request,urllib.parse,uuid
+import difflib,hashlib,html,json,pathlib,re,socket,ipaddress,urllib.request,urllib.parse,uuid
+from youtube_tools import command as youtube_command
 FFMPEG='/opt/homebrew/bin/ffmpeg'
 AUDIO_PYTHON=str(pathlib.Path.home()/'Library/Application Support/English Routine/audio-runtime/bin/python')
 
@@ -49,6 +50,70 @@ def locate_turn(card,transcript):
     if not candidates:raise ValueError('이 표현의 시간표시를 전사에서 찾지 못했습니다. 시간표시가 있는 원본 전사가 필요합니다.')
     _,start,end,fraction=max(candidates,key=lambda c:c[0]);return start,end,fraction
 
+def sentence_context(card,transcript):
+    # Speaker labels belong to the following timestamp, not the previous sentence.
+    transcript=re.sub(r'(?m)^[^\n\[]+(?=\[\d{1,2}:\d{2}(?::\d{2})?\])','',transcript)
+    turns=timestamped_turns(transcript)
+    text='';flat=[]
+    for turn in turns:
+        content=re.sub(r'\[[^\]]*\]',' ',turn['text']).replace('’',"'").strip()
+        offset=len(text);text+=content+' '
+        for match in re.finditer(r"[a-z0-9]+(?:'[a-z]+)?",content,re.I):
+            flat.append((match[0].lower(),offset+match.start(),offset+match.end(),turn))
+    needle=tokens(card['expression']);quote=tokens(card.get('quote',''))
+    words=[item[0] for item in flat];candidates=[]
+    for i in range(len(words)-len(needle)+1):
+        if words[i:i+len(needle)]!=needle:continue
+        nearby=words[max(0,i-len(quote)):i+len(needle)+len(quote)]
+        score=any(nearby[j:j+len(quote)]==quote for j in range(len(nearby)-len(quote)+1)) if quote else False
+        candidates.append((score,i))
+    if not candidates:raise ValueError('전사에서 표현이 포함된 원문 문장을 찾지 못했습니다.')
+    _,position=max(candidates,key=lambda item:item[0])
+    def boundary(i):
+        if i==0:return True
+        punctuation=text[flat[i-1][2]:flat[i][1]] if i<len(flat) else text[flat[-1][2]:]
+        if not re.search(r'[.!?]',punctuation):return False
+        if punctuation.strip()=='.' and flat[i-1][0] in {'mr','mrs','ms','dr','prof','jr','sr','vs'}:return False
+        # A decimal point or initials inside a word are not sentence endings.
+        if i<len(flat) and not re.search(r'\s',punctuation):return False
+        return True
+    left=position;right=position+len(needle)
+    while left>0 and not boundary(left):left-=1
+    while right<len(flat) and not boundary(right):right+=1
+    if not boundary(right):raise ValueError('전사에서 원문 문장의 끝을 확인하지 못했습니다. 문장부호가 포함된 전사가 필요합니다.')
+    first,last=flat[left],flat[right-1]
+    end_text=flat[right][1] if right<len(flat) else len(text)
+    sentence=text[first[1]:end_text].strip()
+    turn=first[3];start=turn['start'];end=last[3]['end'] or last[3]['start']+45
+    if end-start>150:raise ValueError('원문 문장이 너무 길어 음성 구간을 확인하지 못했습니다.')
+    return {'text':sentence,'tokens':words[left:right],'start':start,'end':end,
+            'expressionStart':flat[position][3]['start']}
+
+def align_sentence(words,context,expression,window_start):
+    flat=[]
+    for word in words:
+        for token in tokens(word['word']):flat.append((token,word['start'],word['end']))
+    observed=[item[0] for item in flat];wanted=context['tokens'];phrase=tokens(expression)
+    anchor=min(3,len(wanted))
+    starts=[i for i in range(len(flat)-anchor+1) if observed[i:i+anchor]==wanted[:anchor]]
+    ends=[i+anchor for i in range(len(flat)-anchor+1) if observed[i:i+anchor]==wanted[-anchor:]]
+    phrases=[i for i in range(len(flat)-len(phrase)+1) if observed[i:i+len(phrase)]==phrase]
+    candidates=[]
+    for first in starts:
+        for last in ends:
+            if last<=first:continue
+            matches=[i for i in phrases if first<=i and i+len(phrase)<=last]
+            if not matches:continue
+            a=flat[first][1]+window_start;b=flat[last-1][2]+window_start
+            if not .08<b-a<150:continue
+            similarity=difflib.SequenceMatcher(None,wanted,observed[first:last],autojunk=False).ratio()
+            if similarity<.8:continue
+            distance=min(abs(flat[i][1]+window_start-context['expressionStart']) for i in matches)
+            candidates.append((distance,-similarity,a,b))
+    if not candidates:return None
+    _,_,a,b=min(candidates)
+    return a,b
+
 def discover_audio(session,run,ytdlp):
     url=session.get('url','');host=urllib.parse.urlparse(url).hostname or ''
     if host in ('youtube.com','www.youtube.com','youtu.be','m.youtube.com'):
@@ -66,7 +131,18 @@ def download_source(session,folder,run,ytdlp):
     if source.exists() and source.stat().st_size>1000:return source,json.loads(infofile.read_text()) if infofile.exists() else {'sourceUrl':session.get('url','')}
     info=discover_audio(session,run,ytdlp)
     if info.get('youtube'):
-        run([ytdlp,'--ignore-config','--no-playlist','-f','bestaudio','--extract-audio','--audio-format','mp3','--audio-quality','4','--ffmpeg-location',FFMPEG,'-o',str(folder/'source.%(ext)s'),'--',info['youtube']],timeout=600)
+        args=youtube_command(ytdlp)+['-f','bestaudio','--extract-audio','--audio-format','mp3','--audio-quality','4','--ffmpeg-location',FFMPEG,'-o',str(folder/'source.%(ext)s'),'--',info['youtube']]
+        try:
+            run(args,timeout=600)
+        except ValueError as error:
+            if '403' not in str(error):raise
+            # Re-extract fresh media URLs and discard a failed partial download.
+            try:run(args[:-2]+['--force-overwrites','--no-continue']+args[-2:],timeout=600)
+            except ValueError as retry_error:
+                if '403' not in str(retry_error):raise
+                raise ValueError('YouTube가 원본 음성 다운로드를 거부했습니다(403). 잠시 후 다시 시도해 주세요. 계속되면 앱의 다운로드 도구 업데이트가 필요합니다.') from retry_error
+        if not source.is_file() or source.stat().st_size<=1000:
+            raise ValueError('원본 MP3 다운로드가 완료되지 않았습니다. 다시 시도해 주세요.')
     else:
         partial=folder/'source.download'
         try:
@@ -94,32 +170,25 @@ def prepare(data,data_dir,run,ytdlp):
     session=json.loads(path.read_text())
     if index>=len(session['expressions']):raise ValueError('표현 번호가 올바르지 않습니다.')
     card=session['expressions'][index]
-    start,end,fraction=locate_turn(card,session.get('transcript',''))
+    context=sentence_context(card,session.get('transcript',''))
+    start,end=context['start'],context['end']
     folder=data_dir/'audio'/sid;folder.mkdir(parents=True,exist_ok=True)
-    digest=hashlib.sha256((card['expression']+'\n'+card['quote']).encode()).hexdigest()[:16];name=f'{index}-{digest}'
+    digest=hashlib.sha256(('sentence-v1\n'+card['expression']+'\n'+card['quote']+'\n'+context['text']).encode()).hexdigest()[:16];name=f'{index}-{digest}'
     clip=folder/(name+'.mp3');meta=folder/(name+'.json')
     if clip.exists() and meta.exists():return json.loads(meta.read_text())
     if not pathlib.Path(AUDIO_PYTHON).exists():raise ValueError('원본 음성 구간 분석 도구가 없습니다. 앱 설치 상태를 확인하세요.')
     source,info=download_source(session,folder,run,ytdlp)
-    expected=start+(end-start)*fraction
     bounds=None
     for padding in (7,75):
         window_start=max(0,start-padding);window_end=end+padding;window=folder/f'window-{int(window_start)}-{int(window_end)}.wav';wordsfile=window.with_suffix('.words.json')
         if not wordsfile.exists():
             run([FFMPEG,'-hide_banner','-loglevel','error','-y','-ss',str(window_start),'-i',str(source),'-t',str(window_end-window_start),'-vn','-ac','1','-ar','16000',str(window)],timeout=120)
             run([AUDIO_PYTHON,str(pathlib.Path(__file__).with_name('align_words.py')),str(window),str(wordsfile)],timeout=300)
-        words=json.loads(wordsfile.read_text())['words'];wanted=tokens(card['expression']);flat=[]
-        for w in words:
-            for token in tokens(w['word']):flat.append((token,w['start'],w['end']))
-        candidates=[]
-        for n in range(len(flat)-len(wanted)+1):
-            if [w[0] for w in flat[n:n+len(wanted)]]==wanted:
-                a=flat[n][1]+window_start;b=flat[n+len(wanted)-1][2]+window_start
-                if .08<b-a<20:candidates.append((a,b))
-        if candidates:
-            bounds=min(candidates,key=lambda x:abs(x[0]-expected));break
-    if bounds is None:raise ValueError('실제 음성에서 이 표현의 정확한 단어 구간을 확인하지 못했습니다. 다른 표현을 선택해 주세요.')
+        words=json.loads(wordsfile.read_text())['words']
+        bounds=align_sentence(words,context,card['expression'],window_start)
+        if bounds is not None:break
+    if bounds is None:raise ValueError('실제 음성에서 이 표현이 포함된 문장 전체의 시작과 끝을 확인하지 못했습니다. 다른 표현을 선택해 주세요.')
     a=max(0,bounds[0]-.10);b=bounds[1]+.16
     run([FFMPEG,'-hide_banner','-loglevel','error','-y','-ss',f'{a:.3f}','-i',str(source),'-t',f'{b-a:.3f}','-vn','-acodec','libmp3lame','-q:a','2',str(clip)],timeout=120)
-    result={'clipUrl':f'/api/audio/{sid}/{name}.mp3','start':round(a,3),'end':round(b,3),'duration':round(b-a,3),'expression':card['expression'],'sourceUrl':info['sourceUrl'],'kind':'original-podcast'}
+    result={'clipUrl':f'/api/audio/{sid}/{name}.mp3','start':round(a,3),'end':round(b,3),'duration':round(b-a,3),'expression':card['expression'],'sentence':context['text'],'sourceUrl':info['sourceUrl'],'kind':'original-podcast-sentence'}
     meta.write_text(json.dumps(result,ensure_ascii=False));return result

@@ -1,3 +1,14 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+
+# iOS build output and personal signing settings
+ios/.build/
+ios/build/
+**/xcuserdata/
+*.xcuserstate
+
+# Local transfer archives and personal study exports
+/english-eight-weeks-*.tar.gz
+*.podstudy
+*.podprogress
