@@ -79,9 +79,9 @@ struct StudyFeed: View {
                 } label: {
                     Label(value.rawValue, systemImage: value.symbol)
                         .studyFont(14, .bold).frame(maxWidth: .infinity).frame(minHeight: 44)
-                        .foregroundStyle(mode == value ? StudyStyle.ink : StudyStyle.muted)
-                        .background(mode == value ? StudyStyle.greenTint : StudyStyle.paper, in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(mode == value ? StudyStyle.accent : StudyStyle.line, lineWidth: 2))
+                        .foregroundStyle(mode == value ? Color.white : StudyStyle.muted)
+                        .background(mode == value ? StudyStyle.accent : StudyStyle.paper, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(mode == value ? StudyStyle.accentDeep : StudyStyle.line, lineWidth: 2))
                 }.buttonStyle(.plain)
                     .accessibilityLabel("\(value.rawValue) 모드")
                     .accessibilityAddTraits(mode == value ? .isSelected : [])
@@ -143,7 +143,7 @@ struct StudyFeed: View {
                         .studyFont(14, .medium).foregroundStyle(StudyStyle.muted)
                         .multilineTextAlignment(.center)
                 }.padding(20).frame(maxWidth: .infinity)
-                    .background(StudyStyle.greenTint, in: RoundedRectangle(cornerRadius: 20))
+                    .background(StudyStyle.accentTint, in: RoundedRectangle(cornerRadius: 20))
                 Button { dismiss() } label: {
                     Text("학습 마치기").frame(maxWidth: .infinity)
                 }.buttonStyle(StudyButtonStyle())
@@ -255,7 +255,7 @@ struct ExpressionPage: View {
                         .studyFont(26, .bold).foregroundStyle(StudyStyle.blue)
                 }
             }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-                .background(answerVisible ? StudyStyle.greenTint.opacity(0.5) : StudyStyle.paper, in: RoundedRectangle(cornerRadius: 20))
+                .background(answerVisible ? StudyStyle.accentTint.opacity(0.5) : StudyStyle.paper, in: RoundedRectangle(cornerRadius: 20))
                 .overlay(RoundedRectangle(cornerRadius: 20).stroke(answerVisible ? StudyStyle.accent.opacity(0.45) : StudyStyle.line, lineWidth: 2))
         }
     }

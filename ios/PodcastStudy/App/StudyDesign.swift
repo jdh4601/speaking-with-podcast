@@ -8,11 +8,11 @@ enum StudyStyle {
     static let ink = Color(hex: 0x3C3C3C)
     static let muted = Color(hex: 0x6F6F6F)
     static let line = Color(hex: 0xE5E5E5)
-    static let accent = Color(hex: 0x58CC02)
-    static let accentDeep = Color(hex: 0x58A700)
-    static let greenTint = Color(hex: 0xD7FFB8)
-    static let blue = Color(hex: 0x1CB0F6)
-    static let blueTint = Color(hex: 0xDDF4FF)
+    static let accent = Color(hex: 0x0077B6)
+    static let accentDeep = Color(hex: 0x005A8D)
+    static let accentTint = Color(hex: 0xE4F4FC)
+    static let blue = accent
+    static let blueTint = accentTint
     static let yellow = Color(hex: 0xFFC800)
     static let orange = Color(hex: 0xFF9600)
     static let red = Color(hex: 0xFF4B4B)
@@ -67,7 +67,7 @@ struct StudyButtonStyle: ButtonStyle {
         if !isEnabled { return tone == .quiet ? .clear : StudyStyle.line }
         switch tone {
         case .primary: return StudyStyle.accent
-        case .secondary: return StudyStyle.blueTint
+        case .secondary: return StudyStyle.accent
         case .outline: return StudyStyle.paper
         case .quiet: return .clear
         }
@@ -77,9 +77,17 @@ struct StudyButtonStyle: ButtonStyle {
         guard isEnabled else { return StudyStyle.line }
         switch tone {
         case .primary: return StudyStyle.accentDeep
-        case .secondary: return StudyStyle.blue
+        case .secondary: return StudyStyle.accentDeep
         case .outline: return StudyStyle.line
         case .quiet: return .clear
+        }
+    }
+
+    private var labelColor: Color {
+        guard isEnabled else { return StudyStyle.muted }
+        switch tone {
+        case .primary, .secondary: return .white
+        case .outline, .quiet: return StudyStyle.ink
         }
     }
 
@@ -89,14 +97,14 @@ struct StudyButtonStyle: ButtonStyle {
         configuration.label
             .studyFont(16, .heavy)
             .multilineTextAlignment(.center)
-            .foregroundStyle(isEnabled ? StudyStyle.ink : StudyStyle.muted)
+            .foregroundStyle(labelColor)
             .padding(.horizontal, tone == .quiet ? 10 : 18)
             .padding(.vertical, 12)
             .frame(minHeight: 50)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(face))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(tone == .outline || tone == .secondary ? edge : .clear, lineWidth: 2)
+                    .strokeBorder(tone == .outline ? edge : .clear, lineWidth: 2)
             }
             .background {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)

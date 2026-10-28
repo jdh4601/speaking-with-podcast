@@ -120,11 +120,11 @@ struct ContentView: View {
                 } label: {
                     VStack(spacing: 6) {
                         Image(systemName: tab.icon).font(.system(size: 25, weight: .bold))
-                        Text(tab.rawValue).studyFont(12).foregroundStyle(selectedTab == tab ? StudyStyle.ink : StudyStyle.muted)
-                    }.foregroundStyle(selectedTab == tab ? StudyStyle.blue : StudyStyle.muted)
+                        Text(tab.rawValue).studyFont(12).foregroundStyle(selectedTab == tab ? Color.white : StudyStyle.muted)
+                    }.foregroundStyle(selectedTab == tab ? Color.white : StudyStyle.muted)
                         .frame(maxWidth: .infinity, minHeight: 58)
-                        .background(selectedTab == tab ? StudyStyle.blueTint : .clear, in: RoundedRectangle(cornerRadius: 16))
-                        .overlay { RoundedRectangle(cornerRadius: 16).stroke(selectedTab == tab ? StudyStyle.blue.opacity(0.45) : .clear, lineWidth: 2) }
+                        .background(selectedTab == tab ? StudyStyle.accent : .clear, in: RoundedRectangle(cornerRadius: 16))
+                        .overlay { RoundedRectangle(cornerRadius: 16).stroke(selectedTab == tab ? StudyStyle.accentDeep : .clear, lineWidth: 2) }
                 }.buttonStyle(.plain).accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
         }.padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 12)
@@ -210,7 +210,7 @@ struct ContentView: View {
                 }
             }.buttonStyle(StudyButtonStyle()).disabled(queue.isEmpty)
         }.padding(22)
-            .background(StudyStyle.greenTint.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
+            .background(StudyStyle.accentTint.opacity(0.55), in: RoundedRectangle(cornerRadius: 24))
             .overlay { RoundedRectangle(cornerRadius: 24).stroke(StudyStyle.accent.opacity(0.35), lineWidth: 2) }
     }
 
