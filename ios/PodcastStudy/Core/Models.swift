@@ -89,6 +89,15 @@ struct CardProgress: Codable {
     var lastReviewedAt: Double?
     var nextReviewAt: Double?
 
+    /// Completing a swipe records exposure, never a recalled/known answer.
+    /// Skipping leaves an existing bookmark intact. Later legacy review dates survive.
+    mutating func recordSwipe(save: Bool, now: Date) {
+        if save { saved = true }
+        reviews += 1
+        lastReviewedAt = now.timeIntervalSince1970
+        nextReviewAt = max(nextReviewAt ?? 0, now.addingTimeInterval(86400).timeIntervalSince1970)
+    }
+
     mutating func review(recalled: Bool, now: Date) {
         reviews += 1
         successes = recalled ? min(successes + 1, 6) : 0
@@ -134,4 +143,21 @@ struct ImportTransaction: Codable {
     var transactionID: String
     var episodeID: String
     var hadOriginal: Bool
+}
+
+/// Deliberate horizontal gestures only; vertical reading and short drags do nothing.
+enum ReviewSwipeAction: Equatable {
+    case save, skip
+
+    static func resolve(horizontal: Double, vertical: Double,
+                        projectedHorizontal: Double, cardWidth: Double) -> ReviewSwipeAction? {
+        guard horizontal.isFinite, vertical.isFinite, projectedHorizontal.isFinite,
+              cardWidth.isFinite, cardWidth > 0, abs(horizontal) >= 48,
+              abs(horizontal) > abs(vertical) * 1.2 else { return nil }
+        let threshold = min(120, max(80, cardWidth * 0.25))
+        let alignedProjection = (horizontal > 0) == (projectedHorizontal > 0)
+        let distance = alignedProjection ? max(abs(horizontal), abs(projectedHorizontal)) : abs(horizontal)
+        guard distance >= threshold else { return nil }
+        return horizontal > 0 ? .save : .skip
+    }
 }

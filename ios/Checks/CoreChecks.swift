@@ -73,7 +73,23 @@ struct CoreChecks {
         print("PASS due dates, saved/new separation, daily cap, navigation does not rate")
         try backupChecks(storage: storage, id: id)
         try recoveryChecks(pack: pack)
+        try swipeChecks()
 
+    }
+
+    static func swipeChecks() throws {
+        try expect(ReviewSwipeAction.resolve(horizontal: 100, vertical: 8, projectedHorizontal: 105, cardWidth: 350) == .save, "right saves")
+        try expect(ReviewSwipeAction.resolve(horizontal: -100, vertical: 8, projectedHorizontal: -105, cardWidth: 350) == .skip, "left skips")
+        try expect(ReviewSwipeAction.resolve(horizontal: 55, vertical: 5, projectedHorizontal: 200, cardWidth: 350) == .save, "deliberate quick swipe")
+        for (x, y, end) in [(20.0, 0.0, 500.0), (60, 0, 60), (110, 150, 200), (60, 0, -200)] {
+            try expect(ReviewSwipeAction.resolve(horizontal: x, vertical: y, projectedHorizontal: end, cardWidth: 350) == nil, "short/vertical/cancelled drag does nothing")
+        }
+        var record = CardProgress()
+        record.recordSwipe(save: true, now: Date(timeIntervalSince1970: 1000))
+        record.recordSwipe(save: false, now: Date(timeIntervalSince1970: 1001))
+        try expect(record.saved && record.reviews == 2 && record.successes == 0, "skip preserves bookmark and swipe is not a known answer")
+        try expect(record.nextReviewAt == 87401, "freshly seen expressions return tomorrow")
+        print("PASS directional swipes, vertical/short drag rejection, neutral exposure and saved-state preservation")
     }
 
     static func backupChecks(storage: PackLibrary, id: String) throws {

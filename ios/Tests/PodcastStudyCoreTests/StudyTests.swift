@@ -181,4 +181,56 @@ final class StudyTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: storage.root.appendingPathComponent(original.episode.id).path))
     }
 
+    func testSwipeDirectionMatchesSaveAndSkip() {
+        XCTAssertEqual(ReviewSwipeAction.resolve(horizontal: 110, vertical: 10, projectedHorizontal: 115, cardWidth: 360), .save)
+        XCTAssertEqual(ReviewSwipeAction.resolve(horizontal: -110, vertical: -10, projectedHorizontal: -115, cardWidth: 360), .skip)
+        XCTAssertEqual(ReviewSwipeAction.resolve(horizontal: 55, vertical: 5, projectedHorizontal: 200, cardWidth: 360), .save)
+        XCTAssertEqual(ReviewSwipeAction.resolve(horizontal: -55, vertical: 5, projectedHorizontal: -200, cardWidth: 360), .skip)
+    }
+
+    func testReadingScrollAndShortDragsDoNotCommit() {
+        let ignored: [(Double, Double, Double, Double)] = [
+            (25, 0, 500, 360), (70, 0, 70, 360), (120, 200, 150, 360),
+            (90, 80, 150, 360), (55, 5, -300, 360), (110, 0, 110, 0),
+            (.infinity, 0, 150, 360), (110, .nan, 150, 360), (110, 0, .nan, 360)
+        ]
+        for (x, y, end, width) in ignored {
+            XCTAssertNil(ReviewSwipeAction.resolve(horizontal: x, vertical: y, projectedHorizontal: end, cardWidth: width))
+        }
+    }
+
+    func testSwipeRecordsExposureWithoutClaimingRecall() {
+        let now = Date(timeIntervalSince1970: 1000)
+        var skipped = CardProgress()
+        skipped.recordSwipe(save: false, now: now)
+        XCTAssertFalse(skipped.saved)
+        XCTAssertEqual(skipped.reviews, 1)
+        XCTAssertEqual(skipped.successes, 0)
+        XCTAssertEqual(skipped.nextReviewAt, 87400)
+        var saved = CardProgress()
+        saved.recordSwipe(save: true, now: now)
+        XCTAssertTrue(saved.saved)
+        saved.recordSwipe(save: false, now: now.addingTimeInterval(10))
+        XCTAssertTrue(saved.saved, "Left swipe never removes an existing bookmark")
+        XCTAssertEqual(saved.successes, 0)
+    }
+
+    func testSwipePreservesLaterScheduleAndBacksUpBothChanges() throws {
+        let storage = try library(), original = pack(audio: false)
+        let id = original.episode.cards[0].id
+        var record = CardProgress()
+        record.review(recalled: true, now: Date(timeIntervalSince1970: 1000))
+        record.review(recalled: true, now: Date(timeIntervalSince1970: 2000))
+        let scheduled = record.nextReviewAt
+        record.recordSwipe(save: true, now: Date(timeIntervalSince1970: 3000))
+        XCTAssertEqual(record.nextReviewAt, scheduled)
+        XCTAssertEqual(record.successes, 2)
+        try storage.saveProgress([id: record])
+        let restored = try library().importProgressBackup(storage.exportProgressBackup())
+        XCTAssertTrue(try XCTUnwrap(restored[id]).saved)
+        XCTAssertEqual(restored[id]?.reviews, 3)
+        XCTAssertEqual(restored[id]?.successes, 2)
+        XCTAssertTrue(StudyQueue.today(episodes: [original.episode], progress: restored, now: Date(timeIntervalSince1970: 3001)).isEmpty)
+    }
+
 }
