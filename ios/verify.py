@@ -13,6 +13,8 @@ commands = [
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'macos', '-p', 'test_*.py', '-q'],
     ['node', '--check', 'macos/web/study-export.js'],
     ['node', 'macos/test_study_export_ui.cjs'],
+    ['node', '--check', 'macos/web/conversation-core.js'],
+    ['node', 'macos/test_conversation_ui.cjs'],
     [sys.executable, 'ios/project_checks.py'],
     [sys.executable, 'ios/check.py'],
     [sys.executable, 'ios/preview_macos.py', '--typecheck-only'],
