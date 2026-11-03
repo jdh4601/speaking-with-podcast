@@ -55,6 +55,16 @@ function lessonPriorities(sessions){
  return{date,items};
 }
 
+function lessonOptions(sessions){
+ const seen=new Map();
+ const options=sessions.map(session=>{
+  const order=(seen.get(session.date)||0)+1;
+  seen.set(session.date,order);
+  return{id:session.id,label:order>1?`${session.date} (${order})`:session.date};
+ });
+ return options.reverse();
+}
+
 function direction(metric,delta,previous){
  if(previous===undefined)return'baseline';
  if(delta===0)return'same';
@@ -70,6 +80,6 @@ function metricTrend(sessions){
  });
 }
 
-const api={METRICS,highlightParts,reviewQueue,metricTrend,lessonPriorities,lessonGroups};
+const api={METRICS,highlightParts,reviewQueue,metricTrend,lessonPriorities,lessonGroups,lessonOptions};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.ConversationCore=api;
 })(this);

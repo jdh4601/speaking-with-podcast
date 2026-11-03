@@ -2,9 +2,9 @@
 const STORAGE_KEY='english-mistake-mastered-v1';
 const TOP_CATEGORIES=3;
 const pick=selector=>document.querySelector(selector);
-const{highlightParts,reviewQueue,lessonPriorities,lessonGroups}=window.ConversationCore;
+const{highlightParts,reviewQueue,lessonPriorities,lessonGroups,lessonOptions}=window.ConversationCore;
 const panel=pick('#mistake-review');
-let sessions=[],queue=[],position=0,mastered=readMastered();
+let sessions=[],queue=[],position=0,mastered=readMastered(),selectedLessonId=null;
 
 function readMastered(){
  try{
@@ -60,9 +60,22 @@ function priorityItem(item){
  return row;
 }
 
+function selectedLesson(){
+ const lesson=sessions.find(session=>session.id===selectedLessonId)||sessions.at(-1);
+ return lesson?[lesson]:[];
+}
+
+function renderLessonPicker(){
+ const picker=pick('#mistake-lesson');
+ picker.replaceChildren(...lessonOptions(sessions).map(option=>new Option(option.label,option.id)));
+ const[lesson]=selectedLesson();
+ if(lesson)picker.value=lesson.id;
+}
+
 function showSummary(){
  pick('#mistake-all').hidden=true;
- const{date,items}=lessonPriorities(sessions);
+ pick('#mistake-lesson').hidden=!sessions.length;
+ const{date,items}=lessonPriorities(selectedLesson());
  setHeading('지난 수업에서 개선할 점',date?`${date} 수업 기준`:'내 회화 기록에서');
  pick('#mistake-position').textContent='';
  if(!items.length){
@@ -100,7 +113,7 @@ function allPriorityGroup(group){
 }
 
 function showAllPriorities(){
- const{date,groups}=lessonGroups(sessions);
+ const{date,groups}=lessonGroups(selectedLesson());
  const total=groups.reduce((sum,group)=>sum+group.mistakes.length,0);
  pick('#all-priorities-date').textContent=`${date} 수업 · 총 ${total}건`;
  pick('#all-priorities-list').replaceChildren(...groups.map(allPriorityGroup));
@@ -109,6 +122,7 @@ function showAllPriorities(){
 
 function startReview(){
  pick('#mistake-all').hidden=true;
+ pick('#mistake-lesson').hidden=true;
  position=0;
  setHeading('자주 틀리는 표현 복습','내 회화 기록에서');
  renderCard();
@@ -159,6 +173,8 @@ async function load(){
   sessions=report.conversations;
   queue=reviewQueue(sessions,mastered);
   position=0;
+  selectedLessonId=null;
+  renderLessonPicker();
   showSummary();
  }catch(error){
   pick('#mistake-error-text').textContent=`회화 기록을 불러오지 못했습니다: ${error.message}`;
@@ -167,6 +183,7 @@ async function load(){
 }
 
 pick('#mistake-start').onclick=startReview;
+pick('#mistake-lesson').onchange=event=>{selectedLessonId=event.target.value;showSummary()};
 pick('#mistake-all').onclick=showAllPriorities;
 pick('#all-priorities-close').onclick=()=>pick('#all-priorities').close();
 pick('#mistake-stop').onclick=showSummary;

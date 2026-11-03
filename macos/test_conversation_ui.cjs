@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-const {highlightParts,reviewQueue,metricTrend,lessonPriorities,lessonGroups}=require('./web/conversation-core.js');
+const {highlightParts,reviewQueue,metricTrend,lessonPriorities,lessonGroups,lessonOptions}=require('./web/conversation-core.js');
 
 const mistake=(category,pattern)=>({category,pattern,sentence:'s',wrong:'w',corrected:'c',translation:'t',rule:'r'});
 const session=(date,mistakes)=>({date,mistakes,metrics:{}});
@@ -51,11 +51,17 @@ assert.deepEqual(allGroups.groups[0].mistakes.map(item=>item.sentence),['t1','t2
 assert.equal(lessonGroups([nineCategories]).groups.length,9);
 assert.deepEqual(lessonGroups([]),{date:null,groups:[]});
 
+const dated=(id,date)=>({...session(date,[]),id});
+assert.deepEqual(lessonOptions([dated('a','2026-11-03'),dated('b','2026-11-10'),dated('c','2026-11-10')]),[
+ {id:'c',label:'2026-11-10 (2)'},{id:'b',label:'2026-11-10'},{id:'a',label:'2026-11-03'},
+]);
+assert.deepEqual(lessonOptions([]),[]);
+
 const fs=require('node:fs'),path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'web/index.html'),'utf8');
 for(const removed of ['class="stats"','class="calendar"','class="roadmap"','id="week"','id="topic"','id="daily-note"','id="topic-dialog"','id="today-strip"'])
  assert.equal(html.includes(removed),false,removed);
-for(const required of ['id="mistake-review"','id="week-routine"','id="mistake-summary"','id="mistake-start"','id="mistake-stop"','id="mistake-all"','id="all-priorities"','id="all-priorities-close"','href="conversation.html"','id="settings-open"','id="today-review"','conversation-core.js','mistake-review.js'])
+for(const required of ['id="mistake-review"','id="week-routine"','id="mistake-summary"','id="mistake-start"','id="mistake-stop"','id="mistake-all"','id="mistake-lesson"','id="all-priorities"','id="all-priorities-close"','href="conversation.html"','id="settings-open"','id="today-review"','conversation-core.js','mistake-review.js'])
  assert.equal(html.includes(required),true,required);
 const app=fs.readFileSync(path.join(__dirname,'web/app.js'),'utf8');
 for(const id of [...app.matchAll(/\$\('#([a-z-]+)'\)/g)].map(match=>match[1]))
