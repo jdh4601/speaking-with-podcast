@@ -2,7 +2,7 @@
 const STORAGE_KEY='english-mistake-mastered-v1';
 const TOP_CATEGORIES=3;
 const pick=selector=>document.querySelector(selector);
-const{highlightParts,reviewQueue}=window.ConversationCore;
+const{highlightParts,reviewQueue,lessonPriorities}=window.ConversationCore;
 const panel=pick('#mistake-review');
 let sessions=[],queue=[],position=0,mastered=readMastered();
 
@@ -25,41 +25,72 @@ function saveMastered(){
 }
 
 function showOnly(id){
- for(const name of ['#mistake-card','#mistake-empty','#mistake-error'])pick(name).hidden=name!==id;
+ for(const name of ['#mistake-summary','#mistake-card','#mistake-empty','#mistake-error'])pick(name).hidden=name!==id;
 }
 
-function renderTop(categories){
- const chips=categories.slice(0,TOP_CATEGORIES).map(item=>{
-  const chip=document.createElement('span');
-  chip.className='mistake-chip';
-  chip.textContent=`${item.name} ${item.total}회`;
-  return chip;
- });
- pick('#mistake-top').replaceChildren(...chips);
+function textNode(tag,text,className){
+ const node=document.createElement(tag);
+ node.textContent=text;
+ if(className)node.className=className;
+ return node;
 }
 
-function renderSentence(card){
- const sentence=pick('#mistake-sentence');
- sentence.replaceChildren();
- for(const part of highlightParts(card.sentence,card.wrong)){
-  if(!part.marked){sentence.append(part.text);continue}
-  const mark=document.createElement('mark');
-  mark.className='mistake';
-  mark.textContent=part.text;
-  sentence.append(mark);
+function highlightedSentence(node,mistake){
+ node.replaceChildren(...highlightParts(mistake.sentence,mistake.wrong).map(part=>
+  part.marked?textNode('mark',part.text,'mistake'):document.createTextNode(part.text)));
+ return node;
+}
+
+function setHeading(title,kicker){
+ pick('#mistake-title').textContent=title;
+ pick('#mistake-kicker').textContent=kicker;
+}
+
+function priorityItem(item){
+ const row=document.createElement('li');
+ const heading=document.createElement('div');
+ heading.className='priority-head';
+ heading.append(textNode('strong',item.category),textNode('span',`${item.count}회`));
+ row.append(
+  heading,
+  highlightedSentence(textNode('p','','priority-sentence'),item.example),
+  textNode('p',item.example.corrected,'priority-corrected'),
+  textNode('p',item.example.rule,'priority-rule'),
+ );
+ return row;
+}
+
+function showSummary(){
+ const{date,items}=lessonPriorities(sessions);
+ setHeading('지난 수업에서 개선할 점',date?`${date} 수업 기준`:'내 회화 기록에서');
+ pick('#mistake-position').textContent='';
+ if(!items.length){
+  pick('#mistake-empty-text').textContent=date?'지난 수업에서 찾은 실수가 없습니다.':'아직 분석한 회화가 없습니다.';
+  showOnly('#mistake-empty');
+  return;
  }
+ pick('#mistake-priorities').replaceChildren(...items.map(priorityItem));
+ pick('#mistake-start').disabled=!queue.length;
+ pick('#mistake-start').textContent=queue.length?'복습 시작하기':'복습할 표현을 모두 외웠습니다';
+ showOnly('#mistake-summary');
+}
+
+function startReview(){
+ position=0;
+ setHeading('자주 틀리는 표현 복습','내 회화 기록에서');
+ renderCard();
+ panel.focus();
 }
 
 function renderCard(){
  pick('#mistake-position').textContent=queue.length?`${position+1} / ${queue.length}`:'';
  if(!queue.length){
-  pick('#mistake-empty-text').textContent=sessions.length?'지금 복습할 표현을 모두 외웠습니다.':'아직 분석한 회화가 없습니다.';
-  showOnly('#mistake-empty');
+  showSummary();
   return;
  }
  const card=queue[position];
  pick('#mistake-meaning').textContent=card.translation;
- renderSentence(card);
+ highlightedSentence(pick('#mistake-sentence'),card);
  pick('#mistake-corrected').textContent=card.corrected;
  pick('#mistake-rule').textContent=`${card.category} · ${card.patternTotal}회 · ${card.rule}`;
  pick('#mistake-answer').hidden=true;
@@ -95,20 +126,21 @@ async function load(){
   sessions=report.conversations;
   queue=reviewQueue(sessions,mastered);
   position=0;
-  renderTop(report.frequency.categories);
-  renderCard();
+  showSummary();
  }catch(error){
   pick('#mistake-error-text').textContent=`회화 기록을 불러오지 못했습니다: ${error.message}`;
   showOnly('#mistake-error');
  }
 }
 
+pick('#mistake-start').onclick=startReview;
+pick('#mistake-stop').onclick=showSummary;
 pick('#mistake-reveal').onclick=reveal;
 pick('#mistake-next').onclick=nextCard;
 pick('#mistake-known').onclick=markKnown;
 pick('#mistake-retry').onclick=load;
 panel.addEventListener('keydown',event=>{
- if(event.target!==panel)return;
+ if(event.target!==panel||pick('#mistake-card').hidden)return;
  if(event.key===' '){event.preventDefault();reveal()}
  if(event.key==='ArrowRight'){event.preventDefault();nextCard()}
 });

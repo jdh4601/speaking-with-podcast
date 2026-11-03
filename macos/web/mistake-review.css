@@ -1,9 +1,6 @@
-main{grid-template-rows:minmax(0,1fr) auto}
+main{grid-template-rows:auto minmax(0,1fr)}
 #mistake-review{gap:12px;overflow:auto}
 #mistake-position{font-size:11px}
-#mistake-top{display:flex;flex-wrap:wrap;gap:6px}
-#mistake-top:empty{display:none}
-.mistake-chip{padding:3px 9px;border-radius:12px;background:var(--tint);color:var(--green);font-size:11px}
 #mistake-card{display:flex;flex-direction:column;flex:1;min-height:0;padding:20px;border:1px solid var(--line);border-radius:8px;background:#fbfcf9}
 #mistake-card[hidden],#mistake-answer[hidden],#mistake-empty[hidden],#mistake-error[hidden]{display:none}
 #mistake-card .card-label{color:var(--muted);font-size:11px}
@@ -11,20 +8,39 @@ main{grid-template-rows:minmax(0,1fr) auto}
 #mistake-reveal{align-self:flex-start;padding:7px 14px}
 .mistake-caption{margin:12px 0 2px;color:var(--muted);font-size:11px}
 #mistake-sentence{margin:0;font-size:16px}
-#mistake-sentence mark.mistake{background:#ffd9d9;color:inherit;border-radius:3px;padding:1px 2px}
 #mistake-corrected{margin:0;font-size:18px;font-weight:600}
 #mistake-rule{margin:10px 0 0;font-size:12px}
 .mistake-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:auto;padding-top:16px}
 .mistake-actions button{padding:7px 14px}
 .mistake-link{display:inline-block;padding:7px 12px;border:1px solid var(--line);border-radius:5px;color:var(--green);background:#fff}
-#today-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;padding:9px 2px;border-top:1px solid #dce1d7;font-size:11px}
-.strip-title{color:var(--muted)}
-.strip-task{display:flex;align-items:center;gap:5px;cursor:pointer}
-.strip-task small{color:var(--muted);font-size:10px}
-.strip-task input{margin:0}
+#week-routine{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.routine-day{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);min-width:0}
+.routine-day.today{border-color:var(--green);background:var(--tint)}
+.routine-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.routine-head strong{font-size:12px}
+.routine-day.today .routine-head strong{color:var(--green)}
+.routine-head span{color:var(--muted);font-size:10px}
+.routine-task{display:flex;align-items:flex-start;gap:5px;padding:1px 0;font-size:11px;line-height:1.35;cursor:pointer}
+.routine-task input{flex:none;margin:1px 0 0}
+.routine-task span{min-width:0}
+#mistake-summary{display:flex;flex-direction:column;flex:1;min-height:0}
+#mistake-summary[hidden]{display:none}
+#mistake-priorities{list-style:none;margin:0;padding:0;display:grid;gap:10px;flex:1;min-height:0;overflow:auto;align-content:start}
+#mistake-priorities li{padding:13px 16px;border:1px solid var(--line);border-radius:8px;background:#fbfcf9}
+.priority-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.priority-head strong{font-size:14px}
+.priority-head span{color:var(--muted);font-size:12px}
+.priority-sentence{margin:0;font-size:13px}
+.priority-sentence mark.mistake,#mistake-sentence mark.mistake{background:#ffd9d9;color:inherit;border-radius:3px;padding:1px 2px}
+.priority-corrected{margin:4px 0 0;font-size:14px;font-weight:600}
+.priority-rule{margin:4px 0 0;color:var(--muted);font-size:11px}
+#mistake-start{align-self:stretch;margin-top:12px;padding:11px}
+#mistake-start:disabled{opacity:.55;cursor:default}
+#mistake-stop{margin-right:auto}
 @media(max-width:760px){
- main{grid-template-rows:32px minmax(0,1fr) auto}
+ main{grid-template-rows:auto 32px minmax(0,1fr)}
  .dashboard[data-view=review] .today-panel{display:none}
  .dashboard[data-view=review] aside.review-sidebar{display:block;height:100%}
- #today-strip{gap:4px 12px;padding:6px 0}
+ #week-routine{grid-template-columns:repeat(7,minmax(112px,1fr));overflow-x:auto}
 }
+#mistake-review:focus{outline:none}

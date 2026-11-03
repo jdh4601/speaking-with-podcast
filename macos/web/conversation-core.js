@@ -6,6 +6,8 @@ const METRICS=[
  {key:'talkShare',label:'내 발화 비율',lowerIsBetter:false,unit:'%'},
 ];
 
+const PRIORITY_COUNT=3;
+
 function highlightParts(sentence,target){
  const start=target?sentence.indexOf(target):-1;
  if(start<0)return[{text:sentence,marked:false}];
@@ -33,6 +35,18 @@ function reviewQueue(sessions,mastered){
   .sort((a,b)=>b.categoryTotal-a.categoryTotal||b.latestDate.localeCompare(a.latestDate));
 }
 
+function lessonPriorities(sessions){
+ const latest=sessions.at(-1);
+ if(!latest)return{date:null,items:[]};
+ const groups=new Map();
+ for(const mistake of latest.mistakes){
+  const group=groups.get(mistake.category)||{category:mistake.category,count:0,example:mistake};
+  groups.set(mistake.category,{...group,count:group.count+1});
+ }
+ const items=[...groups.values()].sort((a,b)=>b.count-a.count).slice(0,PRIORITY_COUNT);
+ return{date:latest.date,items};
+}
+
 function direction(metric,delta,previous){
  if(previous===undefined)return'baseline';
  if(delta===0)return'same';
@@ -48,6 +62,6 @@ function metricTrend(sessions){
  });
 }
 
-const api={METRICS,highlightParts,reviewQueue,metricTrend};
+const api={METRICS,highlightParts,reviewQueue,metricTrend,lessonPriorities};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.ConversationCore=api;
 })(this);
