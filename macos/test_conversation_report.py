@@ -9,6 +9,7 @@ from unittest import mock
 
 import server
 from conversation_report import (
+    ANALYSIS_SCHEMA,
     analyze_conversation,
     base_metrics,
     content_hash,
@@ -178,6 +179,23 @@ class AnalyzeTests(StoredReportTestCase):
     def test_unknown_category_is_dropped(self):
         saved = self.analyze(codex=lambda p, s: with_mistake(category='발음'))
         self.assertEqual(saved['mistakes'], [])
+
+    def test_fixed_part_is_kept_when_inside_corrected_sentence(self):
+        saved = self.analyze(codex=lambda p, s: with_mistake(fixed='went'))
+        self.assertEqual(saved['mistakes'][0]['fixed'], 'went')
+
+    def test_fixed_part_outside_corrected_sentence_is_cleared(self):
+        saved = self.analyze(codex=lambda p, s: with_mistake(fixed='flew'))
+        self.assertEqual(len(saved['mistakes']), 1)
+        self.assertEqual(saved['mistakes'][0]['fixed'], '')
+
+    def test_missing_fixed_part_keeps_the_mistake(self):
+        saved = self.analyze(codex=lambda p, s: GOOD)
+        self.assertEqual(saved['mistakes'][0]['fixed'], '')
+
+    def test_schema_requires_fixed_part(self):
+        mistake_schema = ANALYSIS_SCHEMA['properties']['mistakes']['items']
+        self.assertIn('fixed', mistake_schema['required'])
 
     def test_out_of_range_turn_is_dropped(self):
         saved = self.analyze(codex=lambda p, s: with_mistake(turn=99))

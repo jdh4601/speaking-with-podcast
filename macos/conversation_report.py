@@ -141,7 +141,7 @@ def _array_of(properties: dict) -> dict:
 ANALYSIS_SCHEMA = _object({
     'mistakes': _array_of({
         'turn': {'type': 'integer'},
-        **_text_fields('sentence', 'wrong', 'corrected', 'translation', 'pattern', 'rule'),
+        **_text_fields('sentence', 'wrong', 'corrected', 'fixed', 'translation', 'pattern', 'rule'),
         'category': {'type': 'string', 'enum': list(CATEGORIES)},
     }),
     'reviewFlags': _array_of({
@@ -166,6 +166,7 @@ mistakes: real errors in "mine" only.
 - sentence: copy one sentence from "mine" exactly, character for character.
 - wrong: the exact wrong part inside sentence.
 - corrected: a natural corrected sentence. translation: its Korean meaning.
+- fixed: the exact words inside corrected that replace wrong, copied character for character.
 - rule: one short Korean explanation.
 - category: the closest allowed value.
 - pattern: a short lowercase English key for the recurring issue, such as "the same".
@@ -227,7 +228,14 @@ def _valid_mistake(item: object, turns: list[dict]) -> dict | None:
         return None
     if cleaned['sentence'] not in _normalize(turns[turn]['text']):
         return None
-    return {'turn': turn, **cleaned, 'pattern': cleaned['pattern'].lower()}
+    fixed = _normalize(item.get('fixed'))
+    return {
+        'turn': turn,
+        **cleaned,
+        'pattern': cleaned['pattern'].lower(),
+        # A missing highlight is harmless; the correction itself is still valid.
+        'fixed': fixed if fixed in cleaned['corrected'] else '',
+    }
 
 
 def _valid_flag(item: object, turns: list[dict]) -> dict | None:

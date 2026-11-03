@@ -35,9 +35,9 @@ function textNode(tag,text,className){
  return node;
 }
 
-function highlightedSentence(node,mistake){
- node.replaceChildren(...highlightParts(mistake.sentence,mistake.wrong).map(part=>
-  part.marked?textNode('mark',part.text,'mistake'):document.createTextNode(part.text)));
+function highlightedText(node,text,target,markClass){
+ node.replaceChildren(...highlightParts(text,target).map(part=>
+  part.marked?textNode('mark',part.text,markClass):document.createTextNode(part.text)));
  return node;
 }
 
@@ -53,8 +53,8 @@ function priorityItem(item){
  heading.append(textNode('strong',item.category),textNode('span',`${item.count}회`));
  row.append(
   heading,
-  highlightedSentence(textNode('p','','priority-sentence'),item.example),
-  textNode('p',item.example.corrected,'priority-corrected'),
+  highlightedText(textNode('p','','priority-sentence'),item.example.sentence,item.example.wrong,'mistake'),
+  highlightedText(textNode('p','','priority-corrected'),item.example.corrected,item.example.fixed,'fixed'),
   textNode('p',item.example.rule,'priority-rule'),
  );
  return row;
@@ -90,8 +90,8 @@ function renderCard(){
  }
  const card=queue[position];
  pick('#mistake-meaning').textContent=card.translation;
- highlightedSentence(pick('#mistake-sentence'),card);
- pick('#mistake-corrected').textContent=card.corrected;
+ highlightedText(pick('#mistake-sentence'),card.sentence,card.wrong,'mistake');
+ highlightedText(pick('#mistake-corrected'),card.corrected,card.fixed,'fixed');
  pick('#mistake-rule').textContent=`${card.category} · ${card.patternTotal}회 · ${card.rule}`;
  pick('#mistake-answer').hidden=true;
  pick('#mistake-reveal').hidden=false;

@@ -44,3 +44,4 @@ main{grid-template-rows:auto minmax(0,1fr)}
  #week-routine{grid-template-columns:repeat(7,minmax(112px,1fr));overflow-x:auto}
 }
 #mistake-review:focus{outline:none}
+mark.fixed{background:#cfeed5;color:inherit;border-radius:3px;padding:1px 2px}

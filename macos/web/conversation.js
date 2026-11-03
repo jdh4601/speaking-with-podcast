@@ -132,7 +132,7 @@ function renderMistakes(session){
  for(const mistake of session.mistakes){
   const item=element('article',undefined,'mistake-item');
   item.append(highlighted('p',mistake.sentence,mistake.wrong,'mark','mistake','mistake-sentence'));
-  item.append(element('p',mistake.corrected,'mistake-corrected'),element('p',mistake.translation,'mistake-translation'));
+  item.append(highlighted('p',mistake.corrected,mistake.fixed,'mark','fixed','mistake-corrected'),element('p',mistake.translation,'mistake-translation'));
   const rule=element('p',undefined,'mistake-rule');
   rule.append(element('span',mistake.category,'mistake-tag'),mistake.rule);
   item.append(rule);
