@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>회화 리포트 · English Routine</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="library.css">
+<link rel="stylesheet" href="conversation.css">
+</head>
+<body class="conversation-page">
+<header>
+ <div class="identity"><a href="index.html" class="logo" aria-label="대시보드로 돌아가기">e↗</a><strong>회화 리포트</strong></div>
+ <div class="head-actions"><a href="index.html" class="library-nav">← 대시보드</a></div>
+</header>
+<main class="report-main">
+ <section class="report-section" aria-labelledby="input-heading">
+  <h1 id="input-heading">오늘 수업 분석</h1>
+  <label for="script-input">화자 이름이 포함된 수업 스크립트</label>
+  <textarea id="script-input" placeholder="Speaker 1: ...&#10;내 이름 (You): ..."></textarea>
+  <div class="analyze-row">
+   <label for="session-date">수업 날짜</label>
+   <input type="date" id="session-date">
+   <button id="analyze" class="accent">분석하기</button>
+   <span id="analyze-status" role="status"></span>
+  </div>
+  <p class="report-note">분석에는 Codex CLI 사용량을 소비합니다. 내 발화와 그 바로 앞뒤의 상대 발화 일부만 보내며, 스크립트 전체는 저장하지 않습니다.</p>
+ </section>
+ <p id="load-error" role="alert" hidden></p>
+ <p id="skipped-note" role="status" hidden></p>
+ <section class="report-section" aria-labelledby="trend-heading">
+  <h2 id="trend-heading">실력 변화</h2>
+  <div id="trend-grid" class="trend-grid"></div>
+  <details id="trend-table-wrap"><summary>회차별 수치 표</summary><div id="trend-table"></div></details>
+ </section>
+ <section class="report-section" aria-labelledby="repeat-heading">
+  <h2 id="repeat-heading">반복되는 실수</h2>
+  <div class="repeat-grid">
+   <div><h3>유형별</h3><ol id="repeat-categories" class="repeat-list"></ol></div>
+   <div><h3>표현별</h3><ol id="repeat-patterns" class="repeat-list"></ol></div>
+  </div>
+ </section>
+ <section class="report-section" aria-labelledby="session-heading">
+  <div class="session-head">
+   <h2 id="session-heading">회차 리포트</h2>
+   <select id="session-select" aria-label="회차 선택"></select>
+   <button id="session-delete" hidden>이 회차 삭제</button>
+  </div>
+  <p id="dropped-note" class="report-note" hidden></p>
+  <div id="session-mistakes"></div>
+  <h3>단어 정리</h3>
+  <div id="session-vocabulary"></div>
+  <div id="session-flags"></div>
+ </section>
+</main>
+<dialog id="delete-dialog">
+ <h2>이 회차를 삭제할까요?</h2>
+ <p>삭제한 회차는 복구할 수 없고, 실력 변화와 반복 실수 집계에서도 빠집니다.</p>
+ <div class="dialog-actions"><button id="delete-cancel">취소</button><button id="delete-confirm" class="accent">삭제</button></div>
+</dialog>
+<script src="runtime.js"></script>
+<script src="conversation-core.js"></script>
+<script src="conversation.js"></script>
+</body>
+</html>
