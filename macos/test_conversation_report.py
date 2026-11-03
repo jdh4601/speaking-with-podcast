@@ -1,6 +1,16 @@
+import pathlib
+import tempfile
 import unittest
 
-from conversation_report import base_metrics, content_hash, parse_script
+from conversation_report import (
+    analyze_conversation,
+    base_metrics,
+    content_hash,
+    delete_conversation,
+    frequency_summary,
+    load_report,
+    parse_script,
+)
 
 SAMPLE = """A: Hello there, how are you?
 Me (You): I am— I am fine.
@@ -63,6 +73,196 @@ class MetricTests(unittest.TestCase):
         first = parse_script('A: One.\nMe (You): Same words here today.\n')
         second = parse_script('A: Two.\nMe (You): Same words here today.\n')
         self.assertEqual(content_hash(first['turns']), content_hash(second['turns']))
+
+
+OTHER_SCRIPT = 'A: Tell me more.\nMe (You): I went there with my friends.\n'
+LONG_SCRIPT = ''.join(
+    f"A: Question {index}?\nMe (You): {'word ' * 100}number {index}.\n" for index in range(60)
+)
+MISTAKE = {
+    'turn': 0,
+    'sentence': 'I go to school yesterday.',
+    'wrong': 'go',
+    'corrected': 'I went to school yesterday.',
+    'translation': '나는 어제 학교에 갔다.',
+    'category': '시제',
+    'pattern': 'past tense',
+    'rule': '과거 시간 표현에는 과거 시제를 쓴다.',
+}
+WORD_ENTRY = {
+    'term': 'yesterday',
+    'meaning': '어제',
+    'example': 'I saw it yesterday.',
+    'target': 'yesterday',
+}
+EMPTY = {'mistakes': [], 'reviewFlags': [], 'vocabulary': []}
+GOOD = {**EMPTY, 'mistakes': [MISTAKE], 'vocabulary': [WORD_ENTRY]}
+
+
+def with_mistake(**changes: object) -> dict:
+    return {**EMPTY, 'mistakes': [{**MISTAKE, **changes}]}
+
+
+def with_vocabulary(**changes: object) -> dict:
+    return {**EMPTY, 'vocabulary': [{**WORD_ENTRY, **changes}]}
+
+
+def with_flag(kind: str) -> dict:
+    flag = {'turn': 1, 'quote': 'Because.', 'kind': kind, 'note': '확인'}
+    return {**EMPTY, 'reviewFlags': [flag]}
+
+
+def many_vocabulary(count: int) -> dict:
+    entries = [
+        {'term': f'word{i}', 'meaning': '뜻', 'example': f'A word{i} here.', 'target': f'word{i}'}
+        for i in range(count)
+    ]
+    return {**EMPTY, 'vocabulary': entries}
+
+
+def session_with(categories: list[str]) -> dict:
+    return {'mistakes': [{'category': name, 'pattern': name} for name in categories]}
+
+
+def capture(prompts: list[str], result: dict):
+    def codex(prompt: str, schema: dict) -> dict:
+        prompts.append(prompt)
+        return result
+    return codex
+
+
+def fail_on_second_call():
+    calls = []
+
+    def codex(prompt: str, schema: dict) -> dict:
+        calls.append(prompt)
+        if len(calls) == 2:
+            raise ValueError('Codex 실패')
+        return EMPTY
+    return codex
+
+
+class StoredReportTestCase(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = pathlib.Path(directory.name)
+
+    def analyze(self, script: str = SAMPLE, date: str = '2026-11-03', codex=None) -> dict:
+        data = {'script': script, 'date': date}
+        return analyze_conversation(data, self.root, codex or (lambda p, s: EMPTY), lambda m: None)
+
+
+class AnalyzeTests(StoredReportTestCase):
+    def test_saves_valid_result_and_computes_mistake_rate(self):
+        saved = self.analyze(codex=lambda p, s: GOOD)
+        self.assertEqual(saved['metrics']['mistakesPer100'], 9.1)
+        self.assertEqual(len(saved['mistakes']), 1)
+        self.assertEqual(len(saved['vocabulary']), 1)
+
+    def test_fabricated_sentence_is_dropped(self):
+        saved = self.analyze(codex=lambda p, s: with_mistake(sentence='I never said this.'))
+        self.assertEqual(saved['mistakes'], [])
+        self.assertEqual(saved['droppedItems'], 1)
+
+    def test_wrong_part_must_be_inside_sentence(self):
+        saved = self.analyze(codex=lambda p, s: with_mistake(wrong='banana'))
+        self.assertEqual(saved['mistakes'], [])
+
+    def test_unknown_category_is_dropped(self):
+        saved = self.analyze(codex=lambda p, s: with_mistake(category='발음'))
+        self.assertEqual(saved['mistakes'], [])
+
+    def test_out_of_range_turn_is_dropped(self):
+        saved = self.analyze(codex=lambda p, s: with_mistake(turn=99))
+        self.assertEqual(saved['mistakes'], [])
+
+    def test_vocabulary_target_must_be_in_example(self):
+        saved = self.analyze(codex=lambda p, s: with_vocabulary(target='absent'))
+        self.assertEqual(saved['vocabulary'], [])
+
+    def test_review_flags_are_not_counted_as_mistakes(self):
+        saved = self.analyze(codex=lambda p, s: with_flag('transcription'))
+        self.assertEqual(saved['metrics']['mistakesPer100'], 0)
+        self.assertEqual(len(saved['reviewFlags']), 1)
+
+    def test_zero_mistakes_gives_zero_rate(self):
+        self.assertEqual(self.analyze()['metrics']['mistakesPer100'], 0)
+
+    def test_duplicate_script_is_rejected(self):
+        self.analyze()
+        with self.assertRaisesRegex(ValueError, '이미 분석'):
+            self.analyze()
+
+    def test_failed_chunk_saves_nothing(self):
+        with self.assertRaises(ValueError):
+            self.analyze(script=LONG_SCRIPT, codex=fail_on_second_call())
+        self.assertEqual(load_report(self.root)['conversations'], [])
+
+    def test_saved_file_has_no_other_speaker_text(self):
+        self.analyze(codex=lambda p, s: GOOD)
+        raw = next((self.root / 'conversations').glob('*.json')).read_text()
+        self.assertNotIn('Hello there', raw)
+
+    def test_prompt_reuses_known_patterns(self):
+        prompts: list[str] = []
+        self.analyze(codex=capture(prompts, GOOD))
+        self.analyze(script=OTHER_SCRIPT, codex=capture(prompts, EMPTY))
+        self.assertIn('past tense', prompts[-1])
+
+    def test_prompt_excludes_distant_other_lines(self):
+        prompts: list[str] = []
+        script = 'A: Private story.\nA: Close line.\nMe (You): I think so too.\n'
+        self.analyze(script=script, codex=capture(prompts, EMPTY))
+        self.assertIn('Close line.', prompts[0])
+        self.assertNotIn('Private story', prompts[0])
+
+    def test_vocabulary_is_deduplicated_and_capped_at_ten(self):
+        saved = self.analyze(script=LONG_SCRIPT, codex=lambda p, s: many_vocabulary(14))
+        self.assertEqual(len(saved['vocabulary']), 10)
+
+    def test_invalid_date_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.analyze(date='11/03')
+
+
+class StorageTests(StoredReportTestCase):
+    def test_corrupt_file_is_skipped_and_counted(self):
+        self.analyze(codex=lambda p, s: GOOD)
+        (self.root / 'conversations' / 'broken.json').write_text('{')
+        report = load_report(self.root)
+        self.assertEqual(len(report['conversations']), 1)
+        self.assertEqual(report['skipped'], 1)
+
+    def test_conversations_are_sorted_by_date(self):
+        self.analyze(script=OTHER_SCRIPT, date='2026-11-05')
+        self.analyze(date='2026-11-03')
+        dates = [item['date'] for item in load_report(self.root)['conversations']]
+        self.assertEqual(dates, ['2026-11-03', '2026-11-05'])
+
+    def test_delete_rejects_path_traversal(self):
+        with self.assertRaises(ValueError):
+            delete_conversation(self.root, '../secrets')
+
+    def test_delete_removes_session_from_frequency(self):
+        saved = self.analyze(codex=lambda p, s: GOOD)
+        delete_conversation(self.root, saved['id'])
+        self.assertEqual(load_report(self.root)['frequency']['categories'], [])
+
+
+class FrequencyTests(unittest.TestCase):
+    def test_counts_total_sessions_and_recent(self):
+        sessions = [session_with(['관사', '관사', '시제']), session_with(['관사'])]
+        top = frequency_summary(sessions)['categories'][0]
+        self.assertEqual(
+            (top['name'], top['total'], top['sessions'], top['recent']),
+            ('관사', 3, 2, [2, 1]),
+        )
+
+    def test_recent_shows_zero_for_sessions_without_the_mistake(self):
+        sessions = [session_with(['시제']), session_with(['관사'])]
+        patterns = {item['name']: item for item in frequency_summary(sessions)['patterns']}
+        self.assertEqual(patterns['시제']['recent'], [1, 0])
 
 
 if __name__ == '__main__':
