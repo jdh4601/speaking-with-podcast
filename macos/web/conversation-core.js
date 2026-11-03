@@ -6,7 +6,7 @@ const METRICS=[
  {key:'talkShare',label:'내 발화 비율',lowerIsBetter:false,unit:'%'},
 ];
 
-const PRIORITY_COUNT=3;
+const PRIORITY_COUNT=7;
 
 function highlightParts(sentence,target){
  const start=target?sentence.indexOf(target):-1;
