@@ -4,7 +4,7 @@ app=pathlib.Path.home()/'Applications/English Routine.app'
 contents=app/'Contents';bin=contents/'MacOS';res=contents/'Resources'
 bin.mkdir(parents=True,exist_ok=True);res.mkdir(exist_ok=True)
 subprocess.run(['xcrun','clang','-fobjc-arc',str(root/'App.m'),'-o',str(bin/'EnglishRoutine'),'-framework','AppKit','-framework','WebKit'],check=True)
-for name in ['server.py','audio_clips.py','align_words.py','youtube_tools.py','study_pack.py']:shutil.copy2(root/name,res/name)
+for name in ['server.py','audio_clips.py','align_words.py','youtube_tools.py','study_pack.py','conversation_report.py']:shutil.copy2(root/name,res/name)
 shutil.copytree(root/'web',res/'web',dirs_exist_ok=True)
 info={'CFBundleIdentifier':'com.jayden.englishroutine','CFBundleName':'English Routine','CFBundleDisplayName':'English Routine','CFBundleExecutable':'EnglishRoutine','CFBundlePackageType':'APPL','CFBundleShortVersionString':'1.0','CFBundleVersion':'1','CFBundleIconFile':'AppIcon','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'13.0','NSPrincipalClass':'NSApplication','NSAppTransportSecurity':{'NSAllowsLocalNetworking':True,'NSAllowsArbitraryLoadsInWebContent':True}}
 (contents/'Info.plist').write_bytes(plistlib.dumps(info))

@@ -1,7 +1,13 @@
+import http.client
+import json
 import pathlib
 import tempfile
+import threading
+import time
 import unittest
+from unittest import mock
 
+import server
 from conversation_report import (
     analyze_conversation,
     base_metrics,
@@ -263,6 +269,71 @@ class FrequencyTests(unittest.TestCase):
         sessions = [session_with(['시제']), session_with(['관사'])]
         patterns = {item['name']: item for item in frequency_summary(sessions)['patterns']}
         self.assertEqual(patterns['시제']['recent'], [1, 0])
+
+
+class ConversationApiTests(StoredReportTestCase):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(server, 'DATA', self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.server = server.create_server(0)
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def request(self, method: str, path: str, body: dict | None = None, token: str | None = None):
+        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=5)
+        self.addCleanup(connection.close)
+        headers = {'X-English-Token': token or server.TOKEN}
+        connection.request(method, path, json.dumps(body) if body else None, headers)
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+
+    def wait(self, job: str) -> dict:
+        for _ in range(100):
+            _, state = self.request('GET', f'/api/jobs/{job}')
+            if state['status'] != 'running':
+                return state
+            time.sleep(0.02)
+        self.fail('job did not finish')
+
+    def start_job(self, path: str, body: dict) -> dict:
+        status, created = self.request('POST', path, body)
+        self.assertEqual(status, 202)
+        return self.wait(created['job'])
+
+    def test_list_returns_empty_report(self):
+        status, body = self.request('GET', '/api/conversations')
+        self.assertEqual(status, 200)
+        self.assertEqual(body['conversations'], [])
+
+    def test_list_requires_token(self):
+        status, _ = self.request('GET', '/api/conversations', token='wrong')
+        self.assertEqual(status, 403)
+
+    def test_analyze_job_stores_a_conversation(self):
+        with mock.patch.object(server, 'codex_json', lambda prompt, schema: EMPTY):
+            state = self.start_job(
+                '/api/conversation-analyze', {'script': SAMPLE, 'date': '2026-11-03'}
+            )
+        self.assertEqual(state['status'], 'done')
+        _, body = self.request('GET', '/api/conversations')
+        self.assertEqual(len(body['conversations']), 1)
+
+    def test_bad_script_reports_error_through_job(self):
+        state = self.start_job(
+            '/api/conversation-analyze', {'script': 'nothing', 'date': '2026-11-03'}
+        )
+        self.assertIn('(You)', state['error'])
+
+    def test_delete_job_removes_conversation(self):
+        saved = self.analyze()
+        self.assertEqual(
+            self.start_job('/api/conversation-delete', {'id': saved['id']})['status'], 'done'
+        )
+        _, body = self.request('GET', '/api/conversations')
+        self.assertEqual(body['conversations'], [])
 
 
 if __name__ == '__main__':

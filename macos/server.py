@@ -303,8 +303,16 @@ def export_study_pack(data,progress=lambda message:None):
     from study_pack import export_pack
     return export_pack(data,DATA,prepare_audio,attach_source_sentences,progress)
 
+def analyze_lesson(data,progress=lambda message:None):
+    from conversation_report import analyze_conversation
+    return analyze_conversation(data,DATA,lambda prompt,schema:codex_json(prompt,schema),progress)
+
+def delete_lesson(data):
+    from conversation_report import delete_conversation
+    return delete_conversation(DATA,data.get('id'))
+
 def work(id,kind,data):
-    try:result={'search':lambda:search(data.get('query','')),'transcript':lambda:transcript(data.get('url','')),'extract':lambda:extract(data,lambda message:JOBS[id].update(progress=message)),'translate':lambda:translate_examples(data),'translate-source':lambda:translate_source_sentences(data),'audio':lambda:prepare_audio(data),'export':lambda:export_study_pack(data,lambda message:JOBS[id].update(progress=message))}[kind]();JOBS[id]={'status':'done','result':result}
+    try:result={'search':lambda:search(data.get('query','')),'transcript':lambda:transcript(data.get('url','')),'extract':lambda:extract(data,lambda message:JOBS[id].update(progress=message)),'translate':lambda:translate_examples(data),'translate-source':lambda:translate_source_sentences(data),'audio':lambda:prepare_audio(data),'export':lambda:export_study_pack(data,lambda message:JOBS[id].update(progress=message)),'conversation-analyze':lambda:analyze_lesson(data,lambda message:JOBS[id].update(progress=message)),'conversation-delete':lambda:delete_lesson(data)}[kind]();JOBS[id]={'status':'done','result':result}
     except Exception as e:
         msg=str(e)
         if 'command execution' in msg or 'logged' in msg.lower():msg='Codex CLI 실행에 실패했습니다. 터미널에서 codex login status를 확인하세요.'
@@ -362,6 +370,9 @@ class Handler(SimpleHTTPRequestHandler):
                     try:sessions.append(attach_source_sentences(attach_youtube_positions(json.loads(p.read_text()))))
                     except (ValueError,OSError):pass
                 return self.response(200,{'sessions':sorted(sessions,key=lambda s:s['createdAt'],reverse=True)})
+            if self.path=='/api/conversations':
+                from conversation_report import load_report
+                return self.response(200,load_report(DATA))
             if self.path.startswith('/api/jobs/'):
                 return self.response(200,JOBS.get(self.path.rsplit('/',1)[1],{'status':'error','error':'작업을 찾지 못했습니다.'}))
             return self.response(404,{'error':'찾을 수 없습니다.'})
@@ -370,7 +381,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.authorized():return self.response(403,{'error':'접근할 수 없습니다.'})
         if self.headers.get('Origin') not in (None,f'http://127.0.0.1:{self.server.server_port}'):return self.response(403,{'error':'접근할 수 없습니다.'})
         kind=self.path.removeprefix('/api/')
-        if kind not in ('search','transcript','extract','translate','translate-source','audio','export'):return self.response(404,{'error':'찾을 수 없습니다.'})
+        if kind not in ('search','transcript','extract','translate','translate-source','audio','export','conversation-analyze','conversation-delete'):return self.response(404,{'error':'찾을 수 없습니다.'})
         length=int(self.headers.get('Content-Length','0'))
         try:data=json.loads(self.rfile.read(length))
         except ValueError:return self.response(400,{'error':'입력 형식이 잘못되었습니다.'})
