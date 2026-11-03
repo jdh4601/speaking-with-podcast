@@ -2,7 +2,7 @@
 const STORAGE_KEY='english-mistake-mastered-v1';
 const TOP_CATEGORIES=3;
 const pick=selector=>document.querySelector(selector);
-const{highlightParts,reviewQueue,lessonPriorities}=window.ConversationCore;
+const{highlightParts,reviewQueue,lessonPriorities,lessonGroups}=window.ConversationCore;
 const panel=pick('#mistake-review');
 let sessions=[],queue=[],position=0,mastered=readMastered();
 
@@ -61,6 +61,7 @@ function priorityItem(item){
 }
 
 function showSummary(){
+ pick('#mistake-all').hidden=true;
  const{date,items}=lessonPriorities(sessions);
  setHeading('지난 수업에서 개선할 점',date?`${date} 수업 기준`:'내 회화 기록에서');
  pick('#mistake-position').textContent='';
@@ -72,10 +73,42 @@ function showSummary(){
  pick('#mistake-priorities').replaceChildren(...items.map(priorityItem));
  pick('#mistake-start').disabled=!queue.length;
  pick('#mistake-start').textContent=queue.length?'복습 시작하기':'복습할 표현을 모두 외웠습니다';
+ pick('#mistake-all').hidden=false;
  showOnly('#mistake-summary');
 }
 
+function allPriorityRow(mistake){
+ const row=document.createElement('li');
+ // Records from before the fixed field existed still show the whole correction.
+ row.append(
+  textNode('mark',mistake.wrong,'mistake'),
+  textNode('span',' → ','all-arrow'),
+  mistake.fixed?textNode('mark',mistake.fixed,'fixed'):textNode('span',mistake.corrected),
+ );
+ return row;
+}
+
+function allPriorityGroup(group){
+ const section=document.createElement('section');
+ const heading=document.createElement('div');
+ heading.className='priority-head';
+ heading.append(textNode('strong',group.category),textNode('span',`${group.mistakes.length}회`));
+ const list=document.createElement('ul');
+ list.append(...group.mistakes.map(allPriorityRow));
+ section.append(heading,list);
+ return section;
+}
+
+function showAllPriorities(){
+ const{date,groups}=lessonGroups(sessions);
+ const total=groups.reduce((sum,group)=>sum+group.mistakes.length,0);
+ pick('#all-priorities-date').textContent=`${date} 수업 · 총 ${total}건`;
+ pick('#all-priorities-list').replaceChildren(...groups.map(allPriorityGroup));
+ pick('#all-priorities').showModal();
+}
+
 function startReview(){
+ pick('#mistake-all').hidden=true;
  position=0;
  setHeading('자주 틀리는 표현 복습','내 회화 기록에서');
  renderCard();
@@ -134,6 +167,8 @@ async function load(){
 }
 
 pick('#mistake-start').onclick=startReview;
+pick('#mistake-all').onclick=showAllPriorities;
+pick('#all-priorities-close').onclick=()=>pick('#all-priorities').close();
 pick('#mistake-stop').onclick=showSummary;
 pick('#mistake-reveal').onclick=reveal;
 pick('#mistake-next').onclick=nextCard;

@@ -35,16 +35,24 @@ function reviewQueue(sessions,mastered){
   .sort((a,b)=>b.categoryTotal-a.categoryTotal||b.latestDate.localeCompare(a.latestDate));
 }
 
-function lessonPriorities(sessions){
+function lessonGroups(sessions){
  const latest=sessions.at(-1);
- if(!latest)return{date:null,items:[]};
+ if(!latest)return{date:null,groups:[]};
  const groups=new Map();
  for(const mistake of latest.mistakes){
-  const group=groups.get(mistake.category)||{category:mistake.category,count:0,example:mistake};
-  groups.set(mistake.category,{...group,count:group.count+1});
+  const group=groups.get(mistake.category)||{category:mistake.category,mistakes:[]};
+  groups.set(mistake.category,{...group,mistakes:[...group.mistakes,mistake]});
  }
- const items=[...groups.values()].sort((a,b)=>b.count-a.count).slice(0,PRIORITY_COUNT);
- return{date:latest.date,items};
+ const sorted=[...groups.values()].sort((a,b)=>b.mistakes.length-a.mistakes.length);
+ return{date:latest.date,groups:sorted};
+}
+
+function lessonPriorities(sessions){
+ const{date,groups}=lessonGroups(sessions);
+ const items=groups.slice(0,PRIORITY_COUNT).map(group=>({
+  category:group.category,count:group.mistakes.length,example:group.mistakes[0],
+ }));
+ return{date,items};
 }
 
 function direction(metric,delta,previous){
@@ -62,6 +70,6 @@ function metricTrend(sessions){
  });
 }
 
-const api={METRICS,highlightParts,reviewQueue,metricTrend,lessonPriorities};
+const api={METRICS,highlightParts,reviewQueue,metricTrend,lessonPriorities,lessonGroups};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.ConversationCore=api;
 })(this);

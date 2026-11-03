@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-const {highlightParts,reviewQueue,metricTrend,lessonPriorities}=require('./web/conversation-core.js');
+const {highlightParts,reviewQueue,metricTrend,lessonPriorities,lessonGroups}=require('./web/conversation-core.js');
 
 const mistake=(category,pattern)=>({category,pattern,sentence:'s',wrong:'w',corrected:'c',translation:'t',rule:'r'});
 const session=(date,mistakes)=>({date,mistakes,metrics:{}});
@@ -44,11 +44,18 @@ assert.equal(priorities.items[0].example.sentence,'t1');
 assert.deepEqual(lessonPriorities([]),{date:null,items:[]});
 assert.deepEqual(lessonPriorities([session('2026-11-03',[])]),{date:'2026-11-03',items:[]});
 
+const allGroups=lessonGroups([nineCategories,lesson]);
+assert.equal(allGroups.date,'2026-11-03');
+assert.deepEqual(allGroups.groups.map(group=>[group.category,group.mistakes.length]),[['시제',3],['관사',2],['수일치',1],['전치사',1]]);
+assert.deepEqual(allGroups.groups[0].mistakes.map(item=>item.sentence),['t1','t2','t3']);
+assert.equal(lessonGroups([nineCategories]).groups.length,9);
+assert.deepEqual(lessonGroups([]),{date:null,groups:[]});
+
 const fs=require('node:fs'),path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'web/index.html'),'utf8');
 for(const removed of ['class="stats"','class="calendar"','class="roadmap"','id="week"','id="topic"','id="daily-note"','id="topic-dialog"','id="today-strip"'])
  assert.equal(html.includes(removed),false,removed);
-for(const required of ['id="mistake-review"','id="week-routine"','id="mistake-summary"','id="mistake-start"','id="mistake-stop"','href="conversation.html"','id="settings-open"','id="today-review"','conversation-core.js','mistake-review.js'])
+for(const required of ['id="mistake-review"','id="week-routine"','id="mistake-summary"','id="mistake-start"','id="mistake-stop"','id="mistake-all"','id="all-priorities"','id="all-priorities-close"','href="conversation.html"','id="settings-open"','id="today-review"','conversation-core.js','mistake-review.js'])
  assert.equal(html.includes(required),true,required);
 const app=fs.readFileSync(path.join(__dirname,'web/app.js'),'utf8');
 for(const id of [...app.matchAll(/\$\('#([a-z-]+)'\)/g)].map(match=>match[1]))
