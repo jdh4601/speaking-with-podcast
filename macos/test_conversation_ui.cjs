@@ -32,3 +32,13 @@ assert.equal(byKey(metricTrend([withMetrics({mistakesPer100:4}),withMetrics({mis
 assert.equal(byKey(metricTrend([withMetrics({wordsPerTurn:8}),withMetrics({wordsPerTurn:8})]),'wordsPerTurn').direction,'same');
 assert.equal(byKey(metricTrend([withMetrics({wordsPerTurn:8}),withMetrics({wordsPerTurn:9})]),'wordsPerTurn').direction,'better');
 assert.deepEqual(metricTrend([]).map(item=>item.values.length),[0,0,0,0]);
+
+const fs=require('node:fs'),path=require('node:path');
+const html=fs.readFileSync(path.join(__dirname,'web/index.html'),'utf8');
+for(const removed of ['class="stats"','class="calendar"','class="roadmap"','id="week"','id="topic"','id="daily-note"','id="topic-dialog"'])
+ assert.equal(html.includes(removed),false,removed);
+for(const required of ['id="mistake-review"','id="today-strip"','href="conversation.html"','id="settings-open"','id="today-review"','conversation-core.js','mistake-review.js'])
+ assert.equal(html.includes(required),true,required);
+const app=fs.readFileSync(path.join(__dirname,'web/app.js'),'utf8');
+for(const id of [...app.matchAll(/\$\('#([a-z-]+)'\)/g)].map(match=>match[1]))
+ assert.equal(html.includes(`id="${id}"`),true,`app.js targets missing #${id}`);
