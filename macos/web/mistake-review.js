@@ -5,7 +5,6 @@ const pick=selector=>document.querySelector(selector);
 const{highlightParts,reviewQueue,lessonPriorities,lessonGroups,lessonOptions,metricTrend}=window.ConversationCore;
 const panel=pick('#mistake-review');
 let sessions=[],queue=[],position=0,mastered=readMastered(),selectedLessonId=null;
-let speakingMetrics=[];
 
 function readMastered(){
  try{
@@ -73,29 +72,31 @@ function renderLessonPicker(){
  if(lesson)picker.value=lesson.id;
 }
 
-function renderSpeakingChart(){
- const metric=speakingMetrics.find(item=>item.key===pick('#speaking-metric').value);
- pick('#speaking-trend-value').textContent=`최근 수업 ${metric.latest}${metric.unit}`;
- pick('#speaking-trend-chart').replaceChildren(window.ConversationTrend.chart(metric,800));
- pick('#speaking-trend-first').textContent=metric.samples.length>1?metric.samples[0].date:'';
- pick('#speaking-trend-last').textContent=metric.samples.at(-1).date;
+function speakingMetricCard(metric){
+ const card=document.createElement('section');
+ card.className='speaking-metric';
+ card.append(textNode('h3',metric.label));
+ if(!metric.samples.length){
+  card.append(textNode('p','기록 없음','speaking-metric-empty'));
+  return card;
+ }
+ const latest=textNode('p',`${metric.latest}${metric.unit}`,'speaking-metric-value');
+ const dates=document.createElement('div');
+ dates.className='speaking-trend-dates';
+ if(metric.samples.length>1)dates.append(textNode('span',metric.samples[0].date));
+ dates.append(textNode('span',metric.samples.at(-1).date));
+ card.append(latest,window.ConversationTrend.chart(metric),dates);
+ return card;
 }
 
 function showSpeakingTrend(message){
- const picker=pick('#speaking-metric'),status=pick('#speaking-trend-status');
- speakingMetrics=metricTrend(sessions).filter(metric=>metric.samples.length);
- const hasData=!message&&speakingMetrics.length>0;
- picker.hidden=!hasData;
- pick('#speaking-trend-data').hidden=!hasData;
+ const grid=pick('#speaking-trend-data'),status=pick('#speaking-trend-status');
+ const metrics=message?[]:metricTrend(sessions);
+ const hasData=metrics.some(metric=>metric.samples.length);
+ grid.replaceChildren(...(hasData?metrics.map(speakingMetricCard):[]));
+ grid.hidden=!hasData;
  status.hidden=hasData;
- if(!hasData){
-  status.textContent=message||'회화 리포트에서 수업을 분석하면 회차별 변화가 표시됩니다.';
-  return;
- }
- const selected=picker.value;
- picker.replaceChildren(...speakingMetrics.map(metric=>new Option(metric.label,metric.key)));
- if(speakingMetrics.some(metric=>metric.key===selected))picker.value=selected;
- renderSpeakingChart();
+ if(!hasData)status.textContent=message||'회화 리포트에서 수업을 분석하면 회차별 변화가 표시됩니다.';
 }
 
 function showSummary(){
@@ -211,7 +212,6 @@ async function load(){
 }
 
 pick('#mistake-start').onclick=startReview;
-pick('#speaking-metric').onchange=renderSpeakingChart;
 pick('#mistake-lesson').onchange=event=>{selectedLessonId=event.target.value;showSummary()};
 pick('#mistake-all').onclick=showAllPriorities;
 pick('#all-priorities-close').onclick=()=>pick('#all-priorities').close();
