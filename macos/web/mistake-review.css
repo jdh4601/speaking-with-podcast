@@ -17,12 +17,15 @@
 .speaking-metric-value{margin:1px 0 0;font-size:16px;font-weight:600;color:var(--green)}
 .speaking-metric-empty{margin:6px 0 0;color:var(--muted);font-size:11px}
 #speaking-trend-status{margin:6px 0 0;color:var(--muted)}
-.speaking-trend .trend-chart{height:34px;margin-top:0}
-.speaking-trend-dates{
- display:flex;justify-content:space-between;gap:3px;flex-wrap:wrap;
- color:var(--muted);font-size:9px;font-variant-numeric:tabular-nums;
+.speaking-metric-scroll{overflow-x:auto}
+.speaking-metric-scroll:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+.trend-labelled-plot{position:relative;height:96px}
+.trend-labelled-plot .trend-chart{height:100%;margin-top:0}
+.trend-point-value,.trend-point-date{
+ position:absolute;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums;
 }
-.speaking-trend-dates:has(:only-child){justify-content:center}
+.trend-point-value{transform:translate(-50%,calc(-100% - 5px));font-size:11px;font-weight:600}
+.trend-point-date{bottom:0;transform:translateX(-50%);font-size:10px;color:var(--muted)}
 #mistake-review{gap:12px;overflow:auto}
 #mistake-position{font-size:11px}
 #mistake-card{display:flex;flex-direction:column;flex:1;min-height:0;padding:20px;border:1px solid var(--line);border-radius:8px;background:#fbfcf9}

@@ -7,8 +7,11 @@ function svgNode(tag,attributes){
  return node;
 }
 
-function chart(metric,width=200){
- const height=56,padding=8,horizontalPadding=Math.max(padding,width*.02),{samples,values}=metric;
+function chart(metric,{showValues=false}={}){
+ const {samples,values}=metric;
+ const width=200,height=56;
+ const horizontalPadding=showValues?width/(2*samples.length):8;
+ const topPadding=showValues?16:8,bottomPadding=showValues?13:8;
  const svg=svgNode('svg',{
   class:'trend-chart',viewBox:`0 0 ${width} ${height}`,preserveAspectRatio:'none',role:'img',
   'aria-label':`${metric.label} · ${samples.map(({date,value})=>`${date} ${value}${metric.unit}`).join(', ')}`,
@@ -17,17 +20,12 @@ function chart(metric,width=200){
  const points=samples.map(({date,value},index)=>({
   date,value,
   x:samples.length>1?horizontalPadding+index*(width-2*horizontalPadding)/(samples.length-1):width/2,
-  y:high===low?height/2:height-padding-(value-low)/(high-low)*(height-2*padding),
+  y:high===low?height/2:height-bottomPadding-(value-low)/(high-low)*(height-topPadding-bottomPadding),
  }));
  if(points.length>1){
-  let path=`M ${points[0].x} ${points[0].y}`;
-  for(let index=1;index<points.length;index++){
-   const previous=points[index-1],current=points[index];
-   // Horizontal tangents keep each curve within the two measured values.
-   const middle=(previous.x+current.x)/2;
-   path+=` C ${middle} ${previous.y} ${middle} ${current.y} ${current.x} ${current.y}`;
-  }
-  svg.append(svgNode('path',{class:'trend-line',d:path}));
+  svg.append(svgNode('polyline',{
+   class:'trend-line',points:points.map(({x,y})=>`${x},${y}`).join(' '),
+  }));
  }
  for(const {date,value,x,y} of points){
   const mark=svgNode('path',{class:'trend-point',d:`M ${x} ${y} h 0`});
@@ -37,7 +35,29 @@ function chart(metric,width=200){
   hit.append(tip);
   svg.append(mark,hit);
  }
- return svg;
+ if(!showValues)return svg;
+
+ const plot=document.createElement('div');
+ plot.className='trend-labelled-plot';
+ plot.style.minWidth=`${samples.length*68}px`;
+ plot.append(svg);
+ for(const {date,value,x,y} of points){
+  const number=document.createElement('span');
+  number.className='trend-point-value';
+  number.textContent=`${value}${metric.unit}`;
+  number.style.left=`${x/width*100}%`;
+  number.style.top=`${y/height*100}%`;
+  number.setAttribute('aria-hidden','true');
+
+  const dateLabel=document.createElement('time');
+  dateLabel.className='trend-point-date';
+  dateLabel.dateTime=date;
+  dateLabel.textContent=date;
+  dateLabel.style.left=number.style.left;
+  dateLabel.setAttribute('aria-hidden','true');
+  plot.append(number,dateLabel);
+ }
+ return plot;
 }
 
 window.ConversationTrend={chart};

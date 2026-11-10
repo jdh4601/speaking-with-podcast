@@ -81,11 +81,13 @@ function speakingMetricCard(metric){
   return card;
  }
  const latest=textNode('p',`${metric.latest}${metric.unit}`,'speaking-metric-value');
- const dates=document.createElement('div');
- dates.className='speaking-trend-dates';
- if(metric.samples.length>1)dates.append(textNode('span',metric.samples[0].date));
- dates.append(textNode('span',metric.samples.at(-1).date));
- card.append(latest,window.ConversationTrend.chart(metric),dates);
+ const scroll=document.createElement('div');
+ scroll.className='speaking-metric-scroll';
+ scroll.setAttribute('aria-label',`${metric.label} 수업별 기록`);
+ scroll.setAttribute('role','region');
+ scroll.tabIndex=0;
+ scroll.append(window.ConversationTrend.chart(metric,{showValues:true}));
+ card.append(latest,scroll);
  return card;
 }
 
@@ -96,6 +98,7 @@ function showSpeakingTrend(message){
  grid.replaceChildren(...(hasData?metrics.map(speakingMetricCard):[]));
  grid.hidden=!hasData;
  status.hidden=hasData;
+ for(const scroll of grid.querySelectorAll('.speaking-metric-scroll'))scroll.scrollLeft=scroll.scrollWidth;
  if(!hasData)status.textContent=message||'회화 리포트에서 수업을 분석하면 회차별 변화가 표시됩니다.';
 }
 
