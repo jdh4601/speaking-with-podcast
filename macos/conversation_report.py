@@ -28,8 +28,8 @@ BACKCHANNEL_WORDS = frozenset(
     {'mm', 'mm-hm', 'mhm', 'hmm', 'uh-huh', 'yeah', 'yes', 'okay', 'ok', 'right', 'no'}
 )
 MISSING_SELF_LABEL = (
-    '(You) 표시가 있는 본인 발화를 찾지 못했습니다. '
-    '화자 이름이 포함된 스크립트를 붙여 넣으세요.'
+    '분석할 본인 발화를 찾지 못했습니다. '
+    '본인 발화는 You: 또는 이름 (You): 형식으로 표시해 주세요.'
 )
 
 
@@ -50,7 +50,8 @@ def _speaker_blocks(script: str) -> list[dict]:
             continue
         match = SPEAKER_LINE.match(line)
         if match:
-            blocks.append({'own': '(You)' in match[1], 'text': match[2].strip()})
+            speaker = match[1].strip()
+            blocks.append({'own': speaker == 'You' or '(You)' in speaker, 'text': match[2].strip()})
         elif blocks:
             blocks[-1]['text'] = f"{blocks[-1]['text']} {line}".strip()
     return [block for block in blocks if block['text']]
@@ -60,7 +61,7 @@ def parse_script(script: str) -> dict:
     """Merge one speaker's lines into turns, keeping neighbours as short context.
 
     Raises:
-        ValueError: If the transcript has no substantive line marked "(You)".
+        ValueError: If there is no substantive line labelled "You" or "Name (You)".
     """
     turns: list[dict] = []
     open_turn: dict | None = None

@@ -29,6 +29,20 @@ Me (You): Because.
 
 
 class ParseTests(unittest.TestCase):
+    def test_you_label_identifies_own_turns(self):
+        parsed = parse_script(
+            'Them (Speaker 2): How was your day?\n'
+            'You: Yeah.\n'
+            'You: It went well.\n'
+            'Them (Speaker 2): Glad to hear it.\n'
+        )
+        self.assertEqual(parsed['turns'], [{
+            'text': 'It went well.',
+            'before': 'How was your day?',
+            'after': 'Glad to hear it.',
+        }])
+        self.assertEqual(parsed['backchannelTurns'], 1)
+
     def test_backchannel_does_not_split_own_turn(self):
         parsed = parse_script(SAMPLE)
         self.assertEqual(
@@ -333,7 +347,8 @@ class ConversationApiTests(StoredReportTestCase):
     def test_analyze_job_stores_a_conversation(self):
         with mock.patch.object(server, 'codex_json', lambda prompt, schema: EMPTY):
             state = self.start_job(
-                '/api/conversation-analyze', {'script': SAMPLE, 'date': '2026-11-03'}
+                '/api/conversation-analyze',
+                {'script': SAMPLE.replace('Me (You):', 'You:'), 'date': '2026-11-03'},
             )
         self.assertEqual(state['status'], 'done')
         _, body = self.request('GET', '/api/conversations')
