@@ -73,10 +73,13 @@ function direction(metric,delta,previous){
 
 function metricTrend(sessions){
  return METRICS.map(metric=>{
-  const values=sessions.map(session=>session.metrics[metric.key]).filter(Number.isFinite);
+  const samples=sessions
+   .map(session=>({date:session.date,value:session.metrics?.[metric.key]}))
+   .filter(sample=>Number.isFinite(sample.value));
+  const values=samples.map(sample=>sample.value);
   const latest=values.at(-1),previous=values.at(-2);
   const delta=previous===undefined?0:Math.round((latest-previous)*10)/10;
-  return{key:metric.key,label:metric.label,unit:metric.unit,values,latest,delta,direction:direction(metric,delta,previous)};
+  return{key:metric.key,label:metric.label,unit:metric.unit,samples,values,latest,delta,direction:direction(metric,delta,previous)};
  });
 }
 

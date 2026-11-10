@@ -14,6 +14,7 @@ commands = [
     ['node', '--check', 'macos/web/study-export.js'],
     ['node', 'macos/test_study_export_ui.cjs'],
     ['node', '--check', 'macos/web/conversation-core.js'],
+    ['node', '--check', 'macos/web/conversation-trend.js'],
     ['node', '--check', 'macos/web/conversation.js'],
     ['node', '--check', 'macos/web/mistake-review.js'],
     ['node', '--check', 'macos/web/app.js'],

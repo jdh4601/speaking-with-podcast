@@ -47,47 +47,17 @@ function todayInSeoul(){
 
 function formatDelta(delta){return`${delta>0?'+':''}${delta}`}
 
-function chart(metric){
- const NS='http://www.w3.org/2000/svg',width=200,height=56,padding=8;
- const svg=document.createElementNS(NS,'svg');
- svg.setAttribute('class','trend-chart');
- svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
- svg.setAttribute('preserveAspectRatio','none');
- svg.setAttribute('role','img');
- svg.setAttribute('aria-label',`${metric.label} 회차별 값: ${metric.values.join(', ')}`);
- const low=Math.min(...metric.values),high=Math.max(...metric.values),span=high-low||1;
- const points=metric.values.map((value,index)=>({
-  value,
-  x:metric.values.length>1?padding+index*(width-2*padding)/(metric.values.length-1):width/2,
-  y:height-padding-(value-low)/span*(height-2*padding),
- }));
- const line=document.createElementNS(NS,'polyline');
- line.setAttribute('points',points.map(point=>`${point.x},${point.y}`).join(' '));
- svg.append(line);
- points.forEach((point,index)=>{
-  const mark=document.createElementNS(NS,'circle');
-  mark.setAttribute('cx',point.x);mark.setAttribute('cy',point.y);mark.setAttribute('r',4);
-  const hit=document.createElementNS(NS,'circle');
-  hit.setAttribute('class','hit');hit.setAttribute('cx',point.x);hit.setAttribute('cy',point.y);hit.setAttribute('r',14);
-  const tip=document.createElementNS(NS,'title');
-  tip.textContent=`${report.conversations[index].date}: ${point.value}${metric.unit}`;
-  hit.append(tip);
-  svg.append(mark,hit);
- });
- return svg;
-}
-
 function renderTrend(){
  const trend=metricTrend(report.conversations),grid=pick('#trend-grid');
  grid.replaceChildren();
  if(!report.conversations.length){grid.append(element('p','분석한 회차가 없습니다.','empty-note'));pick('#trend-table').replaceChildren();return}
  for(const metric of trend){
   const card=element('div',undefined,'trend-card');
-  const value=element('strong',String(metric.latest),'trend-value');
+  const value=element('strong',String(metric.latest??'—'),'trend-value');
   value.append(element('small',metric.unit));
   const change=metric.direction==='baseline'?DIRECTION_TEXT.baseline:`직전 대비 ${formatDelta(metric.delta)} · ${DIRECTION_TEXT[metric.direction]}`;
   card.append(element('span',metric.label,'trend-label'),value,element('span',change,'trend-change'));
-  card.append(chart(metric));
+  if(metric.values.length)card.append(window.ConversationTrend.chart(metric));
   grid.append(card);
  }
  renderTrendTable(trend);
@@ -106,7 +76,7 @@ function tableOf(headers,rows){
 }
 
 function renderTrendTable(trend){
- const rows=report.conversations.map(session=>[session.date,...trend.map(metric=>session.metrics[metric.key])]);
+ const rows=report.conversations.map(session=>[session.date,...trend.map(metric=>session.metrics?.[metric.key]??'—')]);
  pick('#trend-table').replaceChildren(tableOf(['날짜',...trend.map(metric=>metric.label)],rows));
 }
 

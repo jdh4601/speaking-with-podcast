@@ -2,9 +2,10 @@
 const STORAGE_KEY='english-mistake-mastered-v1';
 const TOP_CATEGORIES=3;
 const pick=selector=>document.querySelector(selector);
-const{highlightParts,reviewQueue,lessonPriorities,lessonGroups,lessonOptions}=window.ConversationCore;
+const{highlightParts,reviewQueue,lessonPriorities,lessonGroups,lessonOptions,metricTrend}=window.ConversationCore;
 const panel=pick('#mistake-review');
 let sessions=[],queue=[],position=0,mastered=readMastered(),selectedLessonId=null;
+let speakingMetrics=[];
 
 function readMastered(){
  try{
@@ -70,6 +71,31 @@ function renderLessonPicker(){
  picker.replaceChildren(...lessonOptions(sessions).map(option=>new Option(option.label,option.id)));
  const[lesson]=selectedLesson();
  if(lesson)picker.value=lesson.id;
+}
+
+function renderSpeakingChart(){
+ const metric=speakingMetrics.find(item=>item.key===pick('#speaking-metric').value);
+ pick('#speaking-trend-value').textContent=`최근 수업 ${metric.latest}${metric.unit}`;
+ pick('#speaking-trend-chart').replaceChildren(window.ConversationTrend.chart(metric,800));
+ pick('#speaking-trend-first').textContent=metric.samples.length>1?metric.samples[0].date:'';
+ pick('#speaking-trend-last').textContent=metric.samples.at(-1).date;
+}
+
+function showSpeakingTrend(message){
+ const picker=pick('#speaking-metric'),status=pick('#speaking-trend-status');
+ speakingMetrics=metricTrend(sessions).filter(metric=>metric.samples.length);
+ const hasData=!message&&speakingMetrics.length>0;
+ picker.hidden=!hasData;
+ pick('#speaking-trend-data').hidden=!hasData;
+ status.hidden=hasData;
+ if(!hasData){
+  status.textContent=message||'회화 리포트에서 수업을 분석하면 회차별 변화가 표시됩니다.';
+  return;
+ }
+ const selected=picker.value;
+ picker.replaceChildren(...speakingMetrics.map(metric=>new Option(metric.label,metric.key)));
+ if(speakingMetrics.some(metric=>metric.key===selected))picker.value=selected;
+ renderSpeakingChart();
 }
 
 function showSummary(){
@@ -176,13 +202,16 @@ async function load(){
   selectedLessonId=null;
   renderLessonPicker();
   showSummary();
+  showSpeakingTrend();
  }catch(error){
+  showSpeakingTrend('회화 기록을 불러오지 못했습니다.');
   pick('#mistake-error-text').textContent=`회화 기록을 불러오지 못했습니다: ${error.message}`;
   showOnly('#mistake-error');
  }
 }
 
 pick('#mistake-start').onclick=startReview;
+pick('#speaking-metric').onchange=renderSpeakingChart;
 pick('#mistake-lesson').onchange=event=>{selectedLessonId=event.target.value;showSummary()};
 pick('#mistake-all').onclick=showAllPriorities;
 pick('#all-priorities-close').onclick=()=>pick('#all-priorities').close();
