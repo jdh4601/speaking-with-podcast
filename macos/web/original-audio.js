@@ -6,7 +6,7 @@ window.OriginalAudio=(()=>{
  const pending=new Map();
  const keyFor=(session,index)=>session.id+':'+index;
  async function load(session,index){
-  const {job}=await request('audio',{sessionId:session.id,index});
+  const {job}=await request('audio',{sessionId:session.id,index,playback:true});
   const deadline=Date.now()+900000;
   for(let delay=100;Date.now()<deadline;delay=Math.min(delay*2,1000)){
    const state=await request('jobs/'+job);
@@ -82,9 +82,10 @@ window.OriginalAudio=(()=>{
     if(id===serial&&onProgress)onProgress(player.currentTime,!player.paused&&!player.ended,clip.duration);
    }
    player.ontimeupdate=player.onplay=player.onpause=update;
+   const label=clip.kind==='original-podcast-caption'?'원본 음성 · 전사 시간 기준':'원문 문장 MP3';
    const format=n=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;
-   async function start(){if(id!==serial||!player)return;player.currentTime=0;await player.play();if(id!==serial)return;onStatus(`원문 문장 MP3 · ${format(clip.start)} · ${clip.duration.toFixed(1)}초`)}
-   player.onended=()=>{if(id!==serial)return;if(onProgress)onProgress(clip.duration,false,clip.duration);remaining--;if(remaining>0)timer=setTimeout(()=>start().catch(e=>onStatus(e.message,true)),600);else onStatus(`원문 문장 MP3 · ${clip.duration.toFixed(1)}초 · 재생 완료`)};
+   async function start(){if(id!==serial||!player)return;player.currentTime=0;await player.play();if(id!==serial)return;onStatus(`${label} · ${format(clip.start)} · ${clip.duration.toFixed(1)}초`)}
+   player.onended=()=>{if(id!==serial)return;if(onProgress)onProgress(clip.duration,false,clip.duration);remaining--;if(remaining>0)timer=setTimeout(()=>start().catch(e=>onStatus(e.message,true)),600);else onStatus(`${label} · ${clip.duration.toFixed(1)}초 · 재생 완료`)};
    player.onerror=()=>{if(id===serial){update();onStatus('원본 음성을 재생하지 못했습니다.',true)}};
    await start();return clip;
   }catch(e){if(id===serial)onStatus(e.message,true);return null}

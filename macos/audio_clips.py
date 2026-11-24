@@ -229,7 +229,13 @@ def prepare(data,data_dir,run,ytdlp):
     session=json.loads(path.read_text())
     if index>=len(session['expressions']):raise ValueError('표현 번호가 올바르지 않습니다.')
     card=session['expressions'][index]
-    context=sentence_context(card,session.get('transcript',''))
+    quick=data.get('playback') is True
+    transcript=session.get('transcript','')
+    try:context=sentence_context(card,transcript)
+    except ValueError:
+        if not quick:raise
+        start,end,_=locate_turn(card,transcript)
+        context={'text':'','start':start,'end':end}
     start,end=context['start'],context['end']
     folder=data_dir/'audio'/sid;folder.mkdir(parents=True,exist_ok=True)
     digest=hashlib.sha256(('sentence-v1\n'+card['expression']+'\n'+card['quote']+'\n'+context['text']).encode()).hexdigest()[:16];name=f'{index}-{digest}'
@@ -244,21 +250,37 @@ def prepare(data,data_dir,run,ytdlp):
                 result['words']=measured
                 meta.write_text(json.dumps(result,ensure_ascii=False))
         return result
-    if not pathlib.Path(AUDIO_PYTHON).exists():raise ValueError('원본 음성 구간 분석 도구가 없습니다. 앱 설치 상태를 확인하세요.')
+    if quick:
+        # Keep caption-based playback separate from verified study-pack clips.
+        digest=hashlib.sha256(f'playback-v1:{digest}:{start}:{end}'.encode()).hexdigest()[:16]
+        name=f'{index}-{digest}'
+        clip=folder/(name+'.mp3');meta=folder/(name+'.json')
+        if clip.is_file() and meta.is_file():return json.loads(meta.read_text())
+    elif not pathlib.Path(AUDIO_PYTHON).exists():raise ValueError('원본 음성 구간 분석 도구가 없습니다. 앱 설치 상태를 확인하세요.')
     source,info=download_source(session,folder,run,ytdlp)
     bounds=None
-    for padding in (7,75):
+    for padding in ((7,75) if context['text'] else ()):
         window_start=max(0,start-padding);window_end=end+padding;window=folder/f'window-{int(window_start)}-{int(window_end)}.wav';wordsfile=window.with_suffix('.words.json')
         if not wordsfile.exists():
+            if quick:continue
             run([FFMPEG,'-hide_banner','-loglevel','error','-y','-ss',str(window_start),'-i',str(source),'-t',str(window_end-window_start),'-vn','-ac','1','-ar','16000',str(window)],timeout=120)
             run([AUDIO_PYTHON,str(pathlib.Path(__file__).with_name('align_words.py')),str(window),str(wordsfile)],timeout=300)
         words=json.loads(wordsfile.read_text())['words']
         bounds=align_sentence(words,context,card['expression'],window_start)
         if bounds is not None:break
-    if bounds is None:raise ValueError('실제 음성에서 이 표현이 포함된 문장 전체의 시작과 끝을 확인하지 못했습니다. 다른 표현을 선택해 주세요.')
-    a=max(0,bounds[0]-.10);b=bounds[1]+.16
+    if bounds is None:
+        if not quick:raise ValueError('실제 음성에서 이 표현이 포함된 문장 전체의 시작과 끝을 확인하지 못했습니다. 다른 표현을 선택해 주세요.')
+        if end<=start:raise ValueError('전사의 음성 구간 길이를 확인하지 못했습니다.')
+        a=max(0,start-.20);b=end+.20
+    else:
+        a=max(0,bounds[0]-.10);b=bounds[1]+.16
     run([FFMPEG,'-hide_banner','-loglevel','error','-y','-ss',f'{a:.3f}','-i',str(source),'-t',f'{b-a:.3f}','-vn','-acodec','libmp3lame','-q:a','2',str(clip)],timeout=120)
     result={'clipUrl':f'/api/audio/{sid}/{name}.mp3','start':round(a,3),'end':round(b,3),'duration':round(b-a,3),'expression':card['expression'],'sentence':context['text'],'sourceUrl':info['sourceUrl'],'kind':'original-podcast-sentence'}
-    measured=relative_word_timings(words,window_start,a,result['duration'])
-    if measured:result['words']=measured
+    if bounds is None:
+        duration=float(run([str(pathlib.Path(FFMPEG).with_name('ffprobe')),'-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',str(clip)],timeout=15))
+        if not math.isfinite(duration) or duration<=0:raise ValueError('전사 구간에서 재생할 음성을 찾지 못했습니다.')
+        result.update(kind='original-podcast-caption',duration=round(duration,3),end=round(a+duration,3))
+    else:
+        measured=relative_word_timings(words,window_start,a,result['duration'])
+        if measured:result['words']=measured
     meta.write_text(json.dumps(result,ensure_ascii=False));return result
