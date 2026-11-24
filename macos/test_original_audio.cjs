@@ -23,8 +23,8 @@ global.fetch = async (path, options) => {
   return {ok: true, blob: () => new Blob([path])};
 };
 global.Audio = class {
-  pause() {}
-  play() {played.push(this)}
+  pause() {this.paused=true;this.onpause?.()}
+  play() {this.paused=false;played.push(this);this.onplay?.()}
 };
 require('./web/original-audio.js');
 (async () => {
@@ -43,6 +43,24 @@ require('./web/original-audio.js');
   assert.equal(played.length, 3);
   assert.deepEqual(clips, ['/clip/0', '/clip/3', '/clip/4']);
   assert.deepEqual(requested, [0, 3, 4]);
+  const updates = [];
+  const progress = (...state) => updates.push(state);
+  const toggle = () => audio.toggle(session, 3, () => {}, progress);
+  await toggle();
+  const player = played.at(-1);
+  player.currentTime = 0.4;
+  player.ontimeupdate();
+  assert.deepEqual(updates.at(-1), [0.4, true, 1]);
+  await toggle();
+  assert.deepEqual(updates.at(-1), [0.4, false, 1]);
+  await toggle();
+  assert.equal(played.at(-1), player);
+  assert.deepEqual(updates.at(-1), [0.4, true, 1]);
+  player.ended = true;
+  player.onended();
+  assert.deepEqual(updates.at(-1), [1, false, 1]);
   audio.stop();
+  player.ontimeupdate();
+  assert.deepEqual(updates.at(-1), [0, false]);
   console.log('PASS preloaded playback, repeat, stale navigation and shared preparation');
 })().catch(error => {console.error(error); process.exitCode = 1});
