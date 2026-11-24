@@ -11,6 +11,7 @@
   window.OriginalAudio?.stop();get('#review-complete').hidden=true;get('#review-content').hidden=!episode;get('#review-empty').hidden=Boolean(episode);get('#review-episode').hidden=!episode;
   if(!episode){get('#review-position').textContent='';get('#review-source-date').textContent='';return}
   index=Math.max(0,index);if(index>=episode.expressions.length){finish();return}const card=episode.expressions[index];
+  window.OriginalAudio.preload(episode,index);
   get('#review-position').textContent=`${index+1} / ${episode.expressions.length}`;
   get('#review-source-date').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric'}).format(new Date(episode.createdAt*1000))+' 추출';
   get('#review-meaning').textContent=card.meaning;get('#review-expression').textContent=card.expression;get('#review-example').textContent=card.sourceSentence||'원문 문장 전체를 확인하지 못했습니다.';get('#review-translation').textContent=card.sourceSentenceTranslation||(card.sourceSentence?'한글 해석을 준비하는 중…':'');

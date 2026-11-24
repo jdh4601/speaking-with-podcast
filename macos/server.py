@@ -295,9 +295,12 @@ def translate_examples(data):
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(session,ensure_ascii=False));temp.replace(path)
     return session
 
+AUDIO_LOCK=threading.Lock()
+
 def prepare_audio(data):
     import audio_clips
-    return audio_clips.prepare(data,DATA,run,YTDLP)
+    with AUDIO_LOCK:
+        return audio_clips.prepare(data,DATA,run,YTDLP)
 
 def export_study_pack(data,progress=lambda message:None):
     from study_pack import export_pack
@@ -387,7 +390,7 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:return self.response(400,{'error':'입력 형식이 잘못되었습니다.'})
         if not isinstance(data,dict):return self.response(400,{'error':'입력 형식이 잘못되었습니다.'})
         with LOCK:
-            if kind!='translate-source' and any(v['status']=='running' and v.get('kind')!='translate-source' for v in JOBS.values()):return self.response(409,{'error':'진행 중인 작업이 있습니다. 완료 후 다시 시도하세요.'})
+            if kind not in ('translate-source','audio') and any(v['status']=='running' and v.get('kind') not in ('translate-source','audio') for v in JOBS.values()):return self.response(409,{'error':'진행 중인 작업이 있습니다. 완료 후 다시 시도하세요.'})
             if kind=='translate-source' and any(v['status']=='running' and v.get('kind')==kind for v in JOBS.values()):return self.response(409,{'error':'다른 원문 해석을 준비 중입니다. 잠시 후 다시 시도하세요.'})
             for old in list(JOBS):
                 if JOBS[old]['status']!='running' and len(JOBS)>100:del JOBS[old]

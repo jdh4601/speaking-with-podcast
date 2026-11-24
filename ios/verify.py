@@ -13,6 +13,7 @@ commands = [
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'macos', '-p', 'test_*.py', '-q'],
     ['node', '--check', 'macos/web/study-export.js'],
     ['node', 'macos/test_study_export_ui.cjs'],
+    ['node', 'macos/test_original_audio.cjs'],
     ['node', '--check', 'macos/web/conversation-core.js'],
     ['node', '--check', 'macos/web/conversation-trend.js'],
     ['node', '--check', 'macos/web/conversation.js'],
